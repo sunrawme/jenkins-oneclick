@@ -192,7 +192,7 @@ resource "aws_instance" "sonar_nodes" {
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.private[count.index].id
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-  key_name               = "your-aws-key-pair-name" # Replace with your real AWS SSH key name
+  key_name               = "jenkins-ssh-key"
 
   tags = {
     Name = "sonarqube-node-${count.index + 1}"
