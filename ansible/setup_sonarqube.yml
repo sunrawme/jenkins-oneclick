@@ -1,0 +1,122 @@
+---
+- name: Prepare OS and Install Prerequisites on All Nodes
+  hosts: all_nodes
+  become: yes
+  tasks:
+    - name: Update apt repository cache
+      apt:
+        update_cache: yes
+
+    - name: Set system limits for Elasticsearch (SonarQube Requirement)
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      with_items:
+        - { name: 'vm.max_map_count', value: '524288' }
+        - { name: 'fs.file-max', value: '131072' }
+
+    - name: Increase ulimits in limits.conf
+      pam_limits:
+        domain: ubuntu
+        limit_type: "{{ item.type }}"
+        limit_item: "{{ item.item }}"
+        value: "{{ item.value }}"
+      with_items:
+        - { type: 'soft', item: 'nofile', value: '131072' }
+        - { type: 'hard', item: 'nofile', value: '131072' }
+
+    - name: Install Java 17 and NFS common tools
+      apt:
+        name:
+          - openjdk-17-jdk
+          - nfs-common
+          - postgresql
+          - postgresql-contrib
+        state: present
+
+    - name: Create SonarQube installation directory
+      file:
+        path: /opt/sonarqube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Mount EFS Shared Storage for SonarQube Data
+      mount:
+        path: /opt/sonarqube/data
+        src: "{{ efs_dns_name }}:/"
+        fstype: nfs4
+        opts: nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport
+        state: mounted
+
+- name: Configure PostgreSQL Active (Primary) Instance
+  hosts: sonar_active
+  become: yes
+  tasks:
+    - name: Configure Postgres to listen on all interfaces
+      lineinfile:
+        path: /etc/postgresql/14/main/postgresql.conf
+        regexp: "^#?listen_addresses ="
+        line: "listen_addresses = '*'"
+      notify: Restart Postgres
+
+    - name: Allow Passive node connection in pg_hba.conf
+      lineinfile:
+        path: /etc/postgresql/14/main/pg_hba.conf
+        line: "host replication replication 0.0.0.0/0 md5"
+      notify: Restart Postgres
+
+    - name: Create SonarQube Database User
+      become_user: postgres
+      postgresql_user:
+        name: sonar
+        password: "SecureSonarPassword123!"
+        role_attr_flags: SUPERUSER
+
+    - name: Create SonarQube DB
+      become_user: postgres
+      postgresql_db:
+        name: sonar
+        owner: sonar
+
+  handlers:
+    - name: Restart Postgres
+      service:
+        name: postgresql
+        state: restarted
+
+- name: Deploy and Configure SonarQube App
+  hosts: all_nodes
+  become: yes
+  tasks:
+    - name: Download SonarQube Binary
+      get_url:
+        url: https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.2.1.78527.zip
+        dest: /tmp/sonarqube.zip
+
+    - name: Install unzip
+      apt: name=unzip state=present
+
+    - name: Unzip SonarQube
+      unarchive:
+        src: /tmp/sonarqube.zip
+        dest: /opt/
+        remote_src: yes
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Configure SonarQube Database Connection String
+      lineinfile:
+        path: /opt/sonarqube-10.2.1.78527/conf/sonar.properties
+        regexp: "{{ item.regex }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { regex: '^#?sonar.jdbc.username=', line: 'sonar.jdbc.username=sonar' }
+        - { regex: '^#?sonar.jdbc.password=', line: 'sonar.jdbc.password=SecureSonarPassword123!' }
+        - { regex: '^#?sonar.jdbc.url=jdbc:postgresql', line: 'sonar.jdbc.url=jdbc:postgresql://localhost/sonar' }
+
+    - name: Start SonarQube Service
+      shell: /opt/sonarqube-10.2.1.78527/bin/linux-x86-64/sonar.sh start
+      become_user: ubuntu
