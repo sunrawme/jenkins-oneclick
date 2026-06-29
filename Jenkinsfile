@@ -13,7 +13,10 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                // The -reconfigure flag ensures it migrates your state to S3 cleanly
+                // Wipe any old local state cache so it doesn't try to look up the old local backend
+                sh 'rm -rf .terraform .terraform.lock.hcl'
+                
+                // Reinitialize completely fresh with the new S3 backend
                 sh 'terraform init -reconfigure' 
             }
         }
