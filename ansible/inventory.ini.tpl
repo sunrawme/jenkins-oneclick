@@ -11,5 +11,5 @@ sonar_passive
 [all_nodes:vars]
 efs_dns_name=${efs_dns}
 
-# Magic configuration to tunnel SSH over the Bastion Host automatically
-ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -q ubuntu@${bastion_ip} -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no"'
+# Instructs Ansible to automatically transparently tunnel SSH traffic through the Bastion Host
+ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -q ubuntu@${bastion_ip} -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" -o StrictHostKeyChecking=no'
