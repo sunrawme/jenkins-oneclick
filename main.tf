@@ -229,3 +229,46 @@ resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
     LoadBalancer = aws_lb.sonar_alb.arn_suffix
   }
 }
+# --- BASTION HOST (JUMP BOX) ---
+resource "aws_security_group" "bastion_sg" {
+  name        = "bastion-security-group"
+  vpc_id      = aws_vpc.main.id
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # In production, restrict this to your specific IP
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_instance" "bastion" {
+  ami                         = "ami-0f8a61b66d1accaee"
+  instance_type               = "t2.micro" # Tiny and cheap instance is fine for a proxy
+  subnet_id                   = aws_subnet.public[0].id
+  vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
+  key_name                    = "your-actual-key-pair-name" # Must use the same key
+  associate_public_ip_address = true
+
+  tags = { Name = "bastion-jump-box" }
+}
+
+# Update your EC2 Security Group to allow SSH explicitly from the Bastion Security Group
+resource "aws_security_group_rule" "allow_ssh_from_bastion" {
+  type                     = "ingress"
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ec2_sg.id
+  source_security_group_id = aws_security_group.bastion_sg.id
+}
+
+# Output the Bastion Public IP so Jenkins can see it
+output "bastion_public_ip" {
+  value = aws_instance.bastion.public_ip
+}
