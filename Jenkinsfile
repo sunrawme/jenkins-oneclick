@@ -13,11 +13,12 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                // Clear old state cache if needed
-                sh 'rm -rf .terraform .terraform.lock.hcl'
+                // Clear out the old local state cache and the local state file itself
+                // This forces Terraform to look ONLY at your S3 bucket
+                sh 'rm -rf .terraform .terraform.lock.hcl terraform.tfstate terraform.tfstate.backup'
                 
-                // The -input=false flag stops Terraform from asking interactive questions in Jenkins
-                sh 'terraform init -reconfigure -input=false' 
+                // Initialize clean against S3
+                sh 'terraform init -reconfigure' 
             }
         }
 
