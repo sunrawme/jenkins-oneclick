@@ -13,11 +13,11 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                // Wipe any old local state cache so it doesn't try to look up the old local backend
+                // Clear old state cache if needed
                 sh 'rm -rf .terraform .terraform.lock.hcl'
                 
-                // Reinitialize completely fresh with the new S3 backend
-                sh 'terraform init -reconfigure' 
+                // The -input=false flag stops Terraform from asking interactive questions in Jenkins
+                sh 'terraform init -reconfigure -input=false' 
             }
         }
 
