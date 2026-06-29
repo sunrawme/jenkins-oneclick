@@ -274,3 +274,28 @@ resource "aws_security_group_rule" "allow_ssh_from_bastion" {
 output "bastion_public_ip" {
   value = aws_instance.bastion.public_ip
 }
+# --- SNS Email Subscription ---
+resource "aws_sns_topic_subscription" "email_target" {
+  topic_arn = aws_sns_topic.alerts.arn
+  protocol  = "email"
+  endpoint  = "sunraw541@gmail.com"
+}
+
+# --- CloudWatch CPU Utilization Alarm ---
+resource "aws_cloudwatch_metric_alarm" "cpu_alarm" {
+  count               = 2
+  alarm_name          = "sonarqube-node-${count.index + 1}-high-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "120"
+  statistic           = "Average"
+  threshold           = "80" # Alert if CPU goes over 80%
+  alarm_description   = "This metric monitors EC2 CPU utilization"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+
+  dimensions = {
+    InstanceId = aws_instance.sonar_nodes[count.index].id
+  }
+}
