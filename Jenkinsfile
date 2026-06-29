@@ -52,7 +52,6 @@ pipeline {
                 }
             }
         }
-
         stage('Ansible Playbook Execution') {
             steps {
                 // Pause briefly to ensure instances are fully booted up and SSH is ready
