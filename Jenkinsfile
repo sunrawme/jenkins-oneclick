@@ -1,11 +1,14 @@
 pipeline {
     agent any
 
-    environment {
-        AWS_DEFAULT_REGION = 'us-east-1'
-        // Points to the SSH credential ID you set up in Jenkins for your AWS key pair
-        SSH_CREDENTIAL_ID  = 'aws-ec2-private-key' 
-    }
+ environment {
+    AWS_DEFAULT_REGION    = 'us-east-1'
+    SSH_CREDENTIAL_ID     = 'aws-ec2-private-key' 
+    
+    // This securely injects your AWS keys right into the pipeline environment variables
+    AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
+}
 
     stages {
         stage('Checkout Code') {
