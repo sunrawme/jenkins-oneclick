@@ -35,24 +35,20 @@ pipeline {
         stage('Generate Ansible Inventory') {
             steps {
                 script {
-                    // Fetch outputs dynamically from Terraform state
                     def activeIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
                     def passiveIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
                     def efsDns = sh(script: "terraform output -raw efs_dns_name", returnStdout: true).trim()
+                    def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim() // Added this line
 
-                    // Read the Ansible inventory template
                     def template = readFile('ansible/inventory.ini.tpl')
 
-                    // Replace placeholders with live AWS runtime values
                     def inventoryContent = template
                         .replace('${active_ip}', activeIp)
                         .replace('${passive_ip}', passiveIp)
                         .replace('${efs_dns}', efsDns)
+                        .replace('${bastion_ip}', bastionIp) // Added this line
 
-                    // Write out the live inventory file Ansible will use
                     writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
-                    
-                    echo "Ansible inventory successfully built for Active: ${activeIp} and Passive: ${passiveIp}"
                 }
             }
         }
