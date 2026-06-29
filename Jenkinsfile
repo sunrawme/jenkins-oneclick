@@ -11,13 +11,13 @@ pipeline {
     stages {
         stage('Checkout Code') { steps { checkout scm } }
 
-        stage('Terraform Init') {
+       stage('Terraform Init') {
             steps {
-                // Clear out the old local state cache and the local state file itself
+                // Wipe out the old local state cache and the local state files
                 // This forces Terraform to look ONLY at your S3 bucket
                 sh 'rm -rf .terraform .terraform.lock.hcl terraform.tfstate terraform.tfstate.backup'
                 
-                // Initialize clean against S3
+                // Initialize freshly against the S3 backend without the input restrictions
                 sh 'terraform init -reconfigure' 
             }
         }
