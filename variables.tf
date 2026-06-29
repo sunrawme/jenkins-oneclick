@@ -18,5 +18,5 @@ variable "availability_zones" {
 }
 
 variable "instance_type" {
-  default = "t3.medium" # SonarQube requires at least 2 vCPUs and 4GB RAM
+  default = "m7i-flex.large"
 }
