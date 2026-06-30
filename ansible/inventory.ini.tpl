@@ -1,8 +1,8 @@
 [sonar_active]
-${active_ip} ansible_user=ubuntu
+${active_instance_id} ansible_host=${active_ip} ansible_user=ubuntu
 
 [sonar_passive]
-${passive_ip} ansible_user=ubuntu
+${passive_instance_id} ansible_host=${passive_ip} ansible_user=ubuntu
 
 [all_nodes:children]
 sonar_active
