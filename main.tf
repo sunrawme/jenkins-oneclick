@@ -193,43 +193,28 @@ resource "aws_instance" "sonar_nodes" {
   subnet_id              = aws_subnet.private[count.index].id
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
   key_name               = "jenkins-ssh-key"
-  
-  # ADD THIS LINE to allow SSM connection
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
+
+  # ADD THIS USER DATA BLOCK TO ALLOW SSH OVER SSM
+  user_data = <<-EOF
+              #!/bin/bash
+              # Update and ensure the snap-based or deb-based SSM agent is completely active
+              apt-get update -y
+              apt-get install -y snapd
+              snap install amazon-ssm-agent --classic
+              systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+              systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+
+              # Allow SSH handshakes over the SSM Local Channel
+              echo "ProxyCommand /usr/bin/aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters port=%p" >> /etc/ssh/ssh_config
+              
+              # Restart SSH daemon to register configurations
+              systemctl restart ssh
+              EOF
 
   tags = {
     Name = "sonarqube-node-${count.index + 1}"
     Role = count.index == 0 ? "active" : "passive"
-  }
-}
-
-resource "aws_lb_target_group_attachment" "sonar_attach" {
-  count            = 2
-  target_group_arn = aws_lb_target_group.sonar_tg.arn
-  target_id        = aws_instance.sonar_nodes[count.index].id
-  port             = 9000
-}
-
-
-# --- MONITORING & ALERTS ---
-resource "aws_sns_topic" "alerts" {
-  name = "sonarqube-alerts-topic"
-}
-
-resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
-  alarm_name          = "sonarqube-unhealthy-hosts-alarm"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "UnHealthyHostCount"
-  namespace           = "AWS/ApplicationELB"
-  period              = "60"
-  statistic           = "Average"
-  threshold           = "1"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    TargetGroup  = aws_lb_target_group.sonar_tg.arn_suffix
-    LoadBalancer = aws_lb.sonar_alb.arn_suffix
   }
 }
 
