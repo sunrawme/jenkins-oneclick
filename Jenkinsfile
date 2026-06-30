@@ -37,6 +37,12 @@ pipeline {
                         .replace('${passive_ip}', passiveIp)
                         .replace('${efs_dns}', efsDns)
 
+                    // Inject AWS Keys cleanly into the ProxyCommand text block
+                    inventoryContent = inventoryContent.replace(
+                        'aws ssm start-session',
+                        "env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} AWS_DEFAULT_REGION=us-east-1 aws ssm start-session"
+                    )
+
                     writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
                 }
             }
@@ -44,22 +50,15 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep 180 // Kept at 3 mins to allow SSM to register fully
+                sleep 180 
                 dir('ansible') {
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
-                        // Pass parameters natively as environment variables to the shell block
-                        withEnv([
-                            "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}",
-                            "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}",
-                            "AWS_DEFAULT_REGION=us-east-1"
-                        ]) {
-                            sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
-                        }
+                        // The inventory file now contains its own self-sufficient credentials
+                        sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
                     }
                 }
             }
-        }
-        stage('Teardown Approvals Gate') {
+        }        stage('Teardown Approvals Gate') {
             steps {
                 script {
                     // This pauses the pipeline run window completely
