@@ -44,9 +44,10 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep time: 90, unit: 'SECONDS'
+                // FIXED: Simplified native Jenkins sleep syntax
+                sleep 90 
+                
                 dir('ansible') {
-                    // Pulls down your secure key and attaches it to a temporary environment variable ($KEY_FILE)
                     withCredentials([sshUserPrivateKey(credentialsId: env.SSH_CREDENTIAL_ID, keyFileVariable: 'KEY_FILE')]) {
                         sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
                     }
