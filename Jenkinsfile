@@ -41,7 +41,7 @@ pipeline {
                         .replace('${passive_ip}', passiveIp)
                         .replace('${efs_dns}', efsDns)
 
-                    // Dynamically inject raw AWS credentials directly into the generated file's ProxyCommand
+                    // CRITICAL AUTOMATED FIX: Hard-inject the active credentials into the ProxyCommand string
                     inventoryContent = inventoryContent.replace(
                         'aws ssm start-session',
                         "env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} AWS_DEFAULT_REGION=us-east-1 aws ssm start-session"
