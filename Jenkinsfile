@@ -16,9 +16,7 @@ pipeline {
 
         stage('Terraform Destroy - Clean Slate') {
             steps {
-                // Run init to make sure the state file maps perfectly
                 sh 'terraform init -reconfigure'
-                // Force destroy everything
                 sh 'terraform destroy -auto-approve'
             }
         }
