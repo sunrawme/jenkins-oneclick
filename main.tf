@@ -99,7 +99,7 @@ resource "aws_security_group" "ec2_sg" {
     security_groups = [aws_security_group.alb_sg.id]
   }
   ingress {
-    from_port   = 22 # SSH from control node / Bastion/ VPC
+    from_port   = 22 # SSH from control node / VPC
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr] 
@@ -195,10 +195,8 @@ resource "aws_instance" "sonar_nodes" {
   key_name               = "jenkins-ssh-key"
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
 
-  # ADD THIS USER DATA BLOCK TO ALLOW SSH OVER SSM
   user_data = <<-EOF
               #!/bin/bash
-              # Update and ensure the snap-based or deb-based SSM agent is completely active
               apt-get update -y
               apt-get install -y snapd
               snap install amazon-ssm-agent --classic
@@ -207,8 +205,6 @@ resource "aws_instance" "sonar_nodes" {
 
               # Allow SSH handshakes over the SSM Local Channel
               echo "ProxyCommand /usr/bin/aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters port=%p" >> /etc/ssh/ssh_config
-              
-              # Restart SSH daemon to register configurations
               systemctl restart ssh
               EOF
 
@@ -218,50 +214,34 @@ resource "aws_instance" "sonar_nodes" {
   }
 }
 
-# --- BASTION HOST (JUMP BOX) ---
-resource "aws_security_group" "bastion_sg" {
-  name        = "bastion-security-group"
-  vpc_id      = aws_vpc.main.id
-  
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+resource "aws_lb_target_group_attachment" "sonar_attach" {
+  count            = 2
+  target_group_arn = aws_lb_target_group.sonar_tg.arn
+  target_id        = aws_instance.sonar_nodes[count.index].id
+  port             = 9000
+}
+
+
+# --- MONITORING & ALERTS ---
+resource "aws_sns_topic" "alerts" {
+  name = "sonarqube-alerts-topic"
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
+  alarm_name          = "sonarqube-unhealthy-hosts-alarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "UnHealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "1"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.sonar_tg.arn_suffix
+    LoadBalancer = aws_lb.sonar_alb.arn_suffix
   }
-  
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_instance" "bastion" {
-  ami                         = "ami-0f8a61b66d1accaee"
-  instance_type               = "m7i-flex.large"
-  subnet_id                   = aws_subnet.public[0].id
-  vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
-  key_name                    = "jenkins-ssh-key" # FIXED: Replaced placeholder key with your actual key name
-  associate_public_ip_address = true
-
-  tags = { Name = "bastion-jump-box" }
-}
-
-# Explicitly permit SSH traffic passing from the Bastion Security Group to your Private Nodes
-resource "aws_security_group_rule" "allow_ssh_from_bastion" {
-  type                     = "ingress"
-  from_port                = 22
-  to_port                  = 22
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.ec2_sg.id
-  source_security_group_id = aws_security_group.bastion_sg.id
-}
-
-# Expose the Bastion Public IP so the Jenkins pipeline can read it
-output "bastion_public_ip" {
-  value = aws_instance.bastion.public_ip
 }
 
 # --- SNS Email Subscription ---
@@ -287,8 +267,8 @@ resource "aws_cloudwatch_metric_alarm" "cpu_alarm" {
 
   dimensions = {
     InstanceId = aws_instance.sonar_nodes[count.index].id
-  } # <-- THIS CLOSES THE DIMENSIONS BLOCK
-}   # <-- THIS CLOSES THE ALARM RESOURCE BLOCK
+  } 
+}  
 
 # --- IAM ROLE FOR SSM ---
 resource "aws_iam_role" "ec2_ssm_role" {
@@ -306,13 +286,11 @@ resource "aws_iam_role" "ec2_ssm_role" {
   })
 }
 
-# Attach the managed policy required for SSM core functionality
 resource "aws_iam_role_policy_attachment" "ssm_policy" {
   role       = aws_iam_role.ec2_ssm_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Create the instance profile that attaches to the EC2 nodes
 resource "aws_iam_instance_profile" "ec2_ssm_profile" {
   name = "sonarqube-ec2-ssm-profile"
   role = aws_iam_role.ec2_ssm_role.name
