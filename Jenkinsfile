@@ -46,11 +46,13 @@ pipeline {
             steps {
                 sleep time: 90, unit: 'SECONDS'
                 dir('ansible') {
-                    sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml'
+                    // Pulls down your secure key and attaches it to a temporary environment variable ($KEY_FILE)
+                    withCredentials([sshUserPrivateKey(credentialsId: env.SSH_CREDENTIAL_ID, keyFileVariable: 'KEY_FILE')]) {
+                        sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
+                    }
                 }
             }
         }
-
         stage('Teardown Approvals Gate') {
             steps {
                 script {
