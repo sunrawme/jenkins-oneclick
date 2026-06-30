@@ -153,7 +153,7 @@ resource "aws_lb_target_group" "sonar_tg" {
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
   health_check {
-    path                = "/api/system/status" # SonarQube standard health check endpoint
+    path                = "/api/system/status"
     port                = "9000"
     healthy_threshold   = 3
     unhealthy_threshold = 3
@@ -229,6 +229,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
     LoadBalancer = aws_lb.sonar_alb.arn_suffix
   }
 }
+
 # --- BASTION HOST (JUMP BOX) ---
 resource "aws_security_group" "bastion_sg" {
   name        = "bastion-security-group"
@@ -238,7 +239,7 @@ resource "aws_security_group" "bastion_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # For production, restrict this to your specific home/office IP
+    cidr_blocks = ["0.0.0.0/0"]
   }
   
   egress {
@@ -251,10 +252,10 @@ resource "aws_security_group" "bastion_sg" {
 
 resource "aws_instance" "bastion" {
   ami                         = "ami-0f8a61b66d1accaee"
-  instance_type               = "t2.micro" # Tiny instance size is perfect for a basic proxy
+  instance_type               = "t2.micro"
   subnet_id                   = aws_subnet.public[0].id
   vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
-  key_name                    = "your-actual-key-pair-name" # Must match your real AWS SSH key name
+  key_name                    = "jenkins-ssh-key" # FIXED: Replaced placeholder key with your actual key name
   associate_public_ip_address = true
 
   tags = { Name = "bastion-jump-box" }
@@ -274,6 +275,7 @@ resource "aws_security_group_rule" "allow_ssh_from_bastion" {
 output "bastion_public_ip" {
   value = aws_instance.bastion.public_ip
 }
+
 # --- SNS Email Subscription ---
 resource "aws_sns_topic_subscription" "email_target" {
   topic_arn = aws_sns_topic.alerts.arn
@@ -291,7 +293,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_alarm" {
   namespace           = "AWS/EC2"
   period              = "120"
   statistic           = "Average"
-  threshold           = "80" # Alert if CPU goes over 80%
+  threshold           = "80"
   alarm_description   = "This metric monitors EC2 CPU utilization"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
