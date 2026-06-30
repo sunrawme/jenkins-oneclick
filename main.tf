@@ -302,6 +302,9 @@ resource "aws_cloudwatch_metric_alarm" "cpu_alarm" {
 
   dimensions = {
     InstanceId = aws_instance.sonar_nodes[count.index].id
+  } # <-- THIS CLOSES THE DIMENSIONS BLOCK
+}   # <-- THIS CLOSES THE ALARM RESOURCE BLOCK
+
 # --- IAM ROLE FOR SSM ---
 resource "aws_iam_role" "ec2_ssm_role" {
   name = "sonarqube-ec2-ssm-role"
