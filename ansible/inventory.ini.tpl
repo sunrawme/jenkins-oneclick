@@ -11,5 +11,5 @@ sonar_passive
 [all_nodes:vars]
 efs_dns_name=${efs_dns}
 
-# Instructs Ansible to automatically transparently tunnel SSH traffic through the Bastion Host
-ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -q ubuntu@${bastion_ip} -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" -o StrictHostKeyChecking=no'
+# Route traffic directly over AWS SSM instead of an EC2 Bastion node
+ansible_ssh_common_args='-o ProxyCommand="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters port=%p" -o StrictHostKeyChecking=no'
