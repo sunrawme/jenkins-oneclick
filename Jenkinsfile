@@ -30,14 +30,12 @@ pipeline {
                     def activeIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
                     def passiveIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
                     def efsDns = sh(script: "terraform output -raw efs_dns_name", returnStdout: true).trim()
-                    def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
 
                     def template = readFile('ansible/inventory.ini.tpl')
                     def inventoryContent = template
                         .replace('${active_ip}', activeIp)
                         .replace('${passive_ip}', passiveIp)
                         .replace('${efs_dns}', efsDns)
-                        .replace('${bastion_ip}', bastionIp)
 
                     writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
                 }
@@ -46,7 +44,7 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep time: 30, unit: 'SECONDS'
+                sleep time: 90, unit: 'SECONDS'
                 dir('ansible') {
                     sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml'
                 }
