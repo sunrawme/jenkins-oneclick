@@ -23,7 +23,6 @@ pipeline {
         stage('Generate Ansible Inventory') {
             steps {
                 script {
-                    // Force clean extraction using specific raw flags (-raw or json parsing)
                     def activeIp = sh(script: "terraform -chdir=.. output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
                     def passiveIp = sh(script: "terraform -chdir=.. output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
                     def efsDns = sh(script: "terraform -chdir=.. output -raw efs_dns_name", returnStdout: true).trim()
@@ -32,12 +31,14 @@ pipeline {
                     def passiveId = sh(script: "terraform -chdir=.. output -json sonar_instance_ids | jq -r '.[1]'", returnStdout: true).trim()
 
                     def template = readFile('ansible/inventory.ini.tpl')
+                    
+                    // FIXED: Escaped the dollar signs so Groovy treats them as literal strings
                     def inventoryContent = template
-                        .replace('${active_ip}', activeIp)
-                        .replace('${passive_ip}', passiveIp)
-                        .replace('${active_instance_id}', activeId)
-                        .replace('${passive_instance_id}', passiveId)
-                        .replace('${efs_dns}', efsDns)
+                        .replace('\${active_ip}', activeIp)
+                        .replace('\${passive_ip}', passiveIp)
+                        .replace('\${active_instance_id}', activeId)
+                        .replace('\${passive_instance_id}', passiveId)
+                        .replace('\${efs_dns}', efsDns)
 
                     writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
                 }
