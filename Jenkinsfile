@@ -44,15 +44,17 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep 180 
+                sleep 180 // Kept at 3 mins to allow SSM to register fully
                 dir('ansible') {
-                    // SECURE: Use single quotes to reference variables without Groovy interpolation strings
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
-                        sh '''
-                            ansible-playbook -i inventory.ini setup_sonarqube.yml \
-                            --private-key=$KEY_FILE \
-                            --extra-vars "aws_key_id=$AWS_ACCESS_KEY_ID aws_secret_key=$AWS_SECRET_ACCESS_KEY aws_region=us-east-1"
-                        '''
+                        // Pass parameters natively as environment variables to the shell block
+                        withEnv([
+                            "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}",
+                            "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}",
+                            "AWS_DEFAULT_REGION=us-east-1"
+                        ]) {
+                            sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
+                        }
                     }
                 }
             }
