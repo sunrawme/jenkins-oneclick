@@ -23,16 +23,15 @@ pipeline {
         stage('Generate Ansible Inventory') {
             steps {
                 script {
-                    // Fetch Private IPs
+                    // 1. Fetch IP and configuration mappings from Terraform
                     def activeIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
                     def passiveIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
                     def efsDns = sh(script: "terraform output -raw efs_dns_name", returnStdout: true).trim()
 
-                    // Fetch Instance IDs (Assuming your terraform output is named sonar_instance_ids)
-                    // If your output has a different name, match it below
                     def activeId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
                     def passiveId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[1]'", returnStdout: true).trim()
 
+                    // 2. Build out the inventory text file
                     def template = readFile('ansible/inventory.ini.tpl')
                     def inventoryContent = template
                         .replace('${active_ip}', activeIp)
@@ -41,13 +40,21 @@ pipeline {
                         .replace('${passive_instance_id}', passiveId)
                         .replace('${efs_dns}', efsDns)
 
-                    // Inject the raw AWS keys dynamically directly into the ProxyCommand text string
-                    inventoryContent = inventoryContent.replace(
-                        'aws ssm start-session',
-                        "env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} AWS_DEFAULT_REGION=us-east-1 aws ssm start-session"
-                    )
-
                     writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
+
+                    // 3. AUTOMATED FIX: Generate a localized .aws config right here in the workspace
+                    sh 'mkdir -p ansible/.aws'
+                    
+                    def credsContent = """[default]
+aws_access_key_id = ${AWS_ACCESS_KEY_ID}
+aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
+"""
+                    def configContent = """[default]
+region = us-east-1
+output = json
+"""
+                    writeFile(file: 'ansible/.aws/credentials', text: credsContent)
+                    writeFile(file: 'ansible/.aws/config', text: configContent)
                 }
             }
         }
