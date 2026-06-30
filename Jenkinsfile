@@ -61,19 +61,18 @@ output = json
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep 180 // Wait for the nodes to spin up
+                sleep 180 
                 dir('ansible') {
                     script {
-                        // 1. Fetch the active instance ID to test with
                         def activeId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
-                        
                         echo "========================================================="
-                        echo "CRITICAL TRACE: TESTING RAW AWS SSM CONNECTION DIRECTLY"
+                        echo "CRITICAL TRACE: TESTING RAW AWS SSM CONNECTION DIRECTLY ON TARGET: ${activeId}"
                         echo "========================================================="
                         
-                        // 2. Run a raw session manager tunnel test and catch its direct output
-                        sh "env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} AWS_DEFAULT_REGION=us-east-1 aws ssm start-session --target ${activeId} --document-name AWS-StartSSHSession --parameters port=22 || true"
-                        
+                        // Execute using single quotes to bypass insecure Groovy interpolation
+                        withEnv(["TARGET_ID=${activeId}"]) {
+                            sh 'env AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION=us-east-1 aws ssm start-session --target $TARGET_ID --document-name AWS-StartSSHSession --parameters port=22 || true'
+                        }
                         echo "========================================================="
                     }
                     
