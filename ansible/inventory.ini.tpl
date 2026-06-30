@@ -1,8 +1,8 @@
 [sonar_active]
-${active_ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+${active_ip} ansible_user=ubuntu
 
 [sonar_passive]
-${passive_ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+${passive_ip} ansible_user=ubuntu
 
 [all_nodes:children]
 sonar_active
