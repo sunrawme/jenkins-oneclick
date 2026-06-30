@@ -23,14 +23,22 @@ pipeline {
         stage('Generate Ansible Inventory') {
             steps {
                 script {
+                    // Fetch Private IPs
                     def activeIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
                     def passiveIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
                     def efsDns = sh(script: "terraform output -raw efs_dns_name", returnStdout: true).trim()
+
+                    // Fetch Instance IDs (Assuming your terraform output is named sonar_instance_ids)
+                    // If your output has a different name, match it below
+                    def activeId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
+                    def passiveId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[1]'", returnStdout: true).trim()
 
                     def template = readFile('ansible/inventory.ini.tpl')
                     def inventoryContent = template
                         .replace('${active_ip}', activeIp)
                         .replace('${passive_ip}', passiveIp)
+                        .replace('${active_instance_id}', activeId)
+                        .replace('${passive_instance_id}', passiveId)
                         .replace('${efs_dns}', efsDns)
 
                     // Inject the raw AWS keys dynamically directly into the ProxyCommand text string
