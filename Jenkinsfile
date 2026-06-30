@@ -46,12 +46,8 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep 180 
+                sleep 180 // Wait for the new EC2 nodes to spin up
                 dir('ansible') {
-                    // DIAGNOSTIC CHECK: Print exactly why the AWS CLI / SSM plugin is failing locally
-                    sh 'aws --version || echo "AWS CLI NOT FOUND"'
-                    sh 'aws ssm start-session --help > /dev/null && echo "SSM Plugin is working" || echo "SSM PLUGIN IS MISSING"'
-                    
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
                         sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
                     }
