@@ -14,20 +14,17 @@ pipeline {
             }
         }
 
-        stage('Terraform Destroy - Clean Slate') {
-            steps {
+        stage('Terraform Apply') { 
+            steps { 
                 sh 'terraform init -reconfigure'
-                sh 'terraform destroy -auto-approve'
-            }
+                sh 'terraform apply -auto-approve' 
+            } 
         }
-    }
-}
-
-        stage('Terraform Apply') { steps { sh 'terraform apply -auto-approve' } }
 
         stage('Generate Ansible Inventory') {
             steps {
                 script {
+                    // Extract data safely using -chdir=.. to look up one directory tier
                     def activeIp = sh(script: "terraform -chdir=.. output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
                     def passiveIp = sh(script: "terraform -chdir=.. output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
                     def efsDns = sh(script: "terraform -chdir=.. output -raw efs_dns_name", returnStdout: true).trim()
@@ -37,7 +34,7 @@ pipeline {
 
                     def template = readFile('ansible/inventory.ini.tpl')
                     
-                    // FIXED: Escaped the dollar signs so Groovy treats them as literal strings
+                    // Escaped the template dollar signs so Groovy parses them as plaintext tokens
                     def inventoryContent = template
                         .replace('\${active_ip}', activeIp)
                         .replace('\${passive_ip}', passiveIp)
@@ -54,13 +51,13 @@ pipeline {
             steps {
                 sleep 180 
                 dir('ansible') {
-                    // Run the playbook cleanly with our validated inventory mappings
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
                         sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
                     }
                 }
             }
         }
+
         stage('Teardown Approvals Gate') {
             steps {
                 script {
