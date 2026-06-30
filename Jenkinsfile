@@ -61,8 +61,17 @@ output = json
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep 180 // Wait for the new EC2 nodes to spin up
+                sleep 60 
                 dir('ansible') {
+                    script {
+                        // Get the active instance ID to test with
+                        def activeId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
+                        
+                        echo "--- RUNNING DIRECT AWS SSM TUNNEL PROBE ---"
+                        // Force a raw session manager handshake test and dump the real error
+                        sh "env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} AWS_DEFAULT_REGION=us-east-1 aws ssm start-session --target ${activeId} --document-name AWS-StartSSHSession --parameters port=22 || true"
+                    }
+                    
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
                         sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
                     }
