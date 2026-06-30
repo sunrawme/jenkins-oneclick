@@ -188,11 +188,14 @@ data "aws_ami" "ubuntu" {
 
 resource "aws_instance" "sonar_nodes" {
   count                  = 2
-  ami                    = "ami-0f8a61b66d1accaee"
+  ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.private[count.index].id
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
   key_name               = "jenkins-ssh-key"
+  
+  # ADD THIS LINE to allow SSM connection
+  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
 
   tags = {
     Name = "sonarqube-node-${count.index + 1}"
@@ -299,5 +302,32 @@ resource "aws_cloudwatch_metric_alarm" "cpu_alarm" {
 
   dimensions = {
     InstanceId = aws_instance.sonar_nodes[count.index].id
+# --- IAM ROLE FOR SSM ---
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "sonarqube-ec2-ssm-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action    = "sts:AssumeRole"
+        Effect    = "Allow"
+        Principal = { Service = "ec2.amazonaws.com" }
+      }
+    ]
+  })
+}
+
+# Attach the managed policy required for SSM core functionality
+resource "aws_iam_role_policy_attachment" "ssm_policy" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# Create the instance profile that attaches to the EC2 nodes
+resource "aws_iam_instance_profile" "ec2_ssm_profile" {
+  name = "sonarqube-ec2-ssm-profile"
+  role = aws_iam_role.ec2_ssm_role.name
+}
   }
 }
