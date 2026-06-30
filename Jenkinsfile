@@ -47,9 +47,13 @@ pipeline {
                 sleep 90 
                 dir('ansible') {
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
-                        // FIXED: Wrap inside withEnv so the AWS CLI inside the proxy command can read your access keys
+                        // FIXED: Passing AWS credentials directly into the Ansible environment runtime
                         withEnv(["AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}", "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}", "AWS_DEFAULT_REGION=us-east-1"]) {
-                            sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
+                            sh '''
+                                ansible-playbook -i inventory.ini setup_sonarqube.yml \
+                                --private-key=$KEY_FILE \
+                                --extra-vars "ansible_env.AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID ansible_env.AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY ansible_env.AWS_DEFAULT_REGION=us-east-1"
+                            '''
                         }
                     }
                 }
