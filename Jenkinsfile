@@ -3,20 +3,27 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION    = 'us-east-1'
-        SSH_CREDENTIAL_ID     = 'aws-ec2-private-key' 
         AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
         AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
     }
 
     stages {
-        stage('Checkout Code') { steps { checkout scm } }
-
-        stage('Terraform Init') {
+        stage('Checkout Code') {
             steps {
-                sh 'rm -rf .terraform .terraform.lock.hcl terraform.tfstate terraform.tfstate.backup'
-                sh 'terraform init -reconfigure' 
+                checkout scm
             }
         }
+
+        stage('Terraform Destroy - Clean Slate') {
+            steps {
+                // Run init to make sure the state file maps perfectly
+                sh 'terraform init -reconfigure'
+                // Force destroy everything
+                sh 'terraform destroy -auto-approve'
+            }
+        }
+    }
+}
 
         stage('Terraform Apply') { steps { sh 'terraform apply -auto-approve' } }
 
