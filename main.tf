@@ -197,9 +197,8 @@ resource "aws_instance" "sonar_nodes" {
 
   user_data = <<-EOF
               #!/bin/bash
-              apt-get update -y
-              apt-get install -y snapd
-              snap install amazon-ssm-agent --classic
+              # Wait for snap subsystem to be ready, then ensure SSM is active
+              snap wait system seed.loaded
               systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
               systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
 
