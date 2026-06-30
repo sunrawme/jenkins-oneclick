@@ -1,16 +1,15 @@
-output "alb_dns_name" {
-  value = aws_lb.sonar_alb.dns_name
-}
+[sonar_active]
+${active_instance_id} ansible_host=${active_ip} ansible_user=ubuntu
 
-output "sonar_node_private_ips" {
-  value = aws_instance.sonar_nodes[*].private_ip
-}
+[sonar_passive]
+${passive_instance_id} ansible_host=${passive_ip} ansible_user=ubuntu
 
-output "sonar_instance_ids" {
-  description = "The EC2 Instance IDs required by AWS SSM Session Manager"
-  value       = aws_instance.sonar_nodes[*].id
-}
+[all_nodes:children]
+sonar_active
+sonar_passive
 
-output "efs_dns_name" {
-  value = aws_efs_file_system.sonar_shared.dns_name
-}
+[all_nodes:vars]
+efs_dns_name=${efs_dns}
+
+# FIXED: Removed the invalid custom port parameter string
+ansible_ssh_common_args='-o ProxyCommand="aws ssm start-session --target %h --document-name AWS-StartSSHSession" -o StrictHostKeyChecking=no'
