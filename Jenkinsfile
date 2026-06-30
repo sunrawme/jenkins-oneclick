@@ -64,15 +64,18 @@ output = json
                 sleep 180 
                 dir('ansible') {
                     script {
-                        def activeId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
+                        // Gather the target ID safely
+                        def activeId = sh(script: "terraform -chdir=.. output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
+                        
                         echo "========================================================="
                         echo "CRITICAL TRACE: TESTING RAW AWS SSM CONNECTION DIRECTLY ON TARGET: ${activeId}"
                         echo "========================================================="
                         
-                        // Execute using single quotes to bypass insecure Groovy interpolation
+                        // Pass the variable explicitly via environment context block
                         withEnv(["TARGET_ID=${activeId}"]) {
                             sh 'env AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION=us-east-1 aws ssm start-session --target $TARGET_ID --document-name AWS-StartSSHSession --parameters port=22 || true'
                         }
+                        
                         echo "========================================================="
                     }
                     
@@ -82,7 +85,6 @@ output = json
                 }
             }
         }
-
         stage('Teardown Approvals Gate') {
             steps {
                 script {
