@@ -252,7 +252,7 @@ resource "aws_security_group" "bastion_sg" {
 
 resource "aws_instance" "bastion" {
   ami                         = "ami-0f8a61b66d1accaee"
-  instance_type               = "t2.micro"
+  instance_type               = "m7i-flex.large"
   subnet_id                   = aws_subnet.public[0].id
   vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
   key_name                    = "jenkins-ssh-key" # FIXED: Replaced placeholder key with your actual key name
