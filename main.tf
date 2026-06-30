@@ -195,16 +195,12 @@ resource "aws_instance" "sonar_nodes" {
   key_name               = "jenkins-ssh-key"
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
 
+  # FIXED: Removed recursive local ProxyCommand looping block
   user_data = <<-EOF
               #!/bin/bash
-              # Wait for snap subsystem to be ready, then ensure SSM is active
               snap wait system seed.loaded
               systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
               systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
-
-              # Allow SSH handshakes over the SSM Local Channel
-              echo "ProxyCommand /usr/bin/aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters port=%p" >> /etc/ssh/ssh_config
-              systemctl restart ssh
               EOF
 
   tags = {
