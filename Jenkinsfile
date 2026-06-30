@@ -9,11 +9,7 @@ pipeline {
     }
 
     stages {
-        stage('Checkout Code') { 
-            steps { 
-                checkout scm 
-            } 
-        }
+        stage('Checkout Code') { steps { checkout scm } }
 
         stage('Terraform Init') {
             steps {
@@ -22,11 +18,7 @@ pipeline {
             }
         }
 
-        stage('Terraform Apply') { 
-            steps { 
-                sh 'terraform apply -auto-approve' 
-            } 
-        }
+        stage('Terraform Apply') { steps { sh 'terraform apply -auto-approve' } }
 
         stage('Generate Ansible Inventory') {
             steps {
@@ -41,7 +33,7 @@ pipeline {
                         .replace('${passive_ip}', passiveIp)
                         .replace('${efs_dns}', efsDns)
 
-                    // CRITICAL AUTOMATED FIX: Hard-inject the active credentials into the ProxyCommand string
+                    // Inject the raw AWS keys dynamically directly into the ProxyCommand text string
                     inventoryContent = inventoryContent.replace(
                         'aws ssm start-session',
                         "env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} AWS_DEFAULT_REGION=us-east-1 aws ssm start-session"
@@ -54,8 +46,12 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                // TEMPORARY: Skip this block to allow the pipeline to reach our cleanup steps
-                echo "Temporarily skipping playbook execution to unlock the Teardown gate..."
+                sleep 180 // Mandatory 3-minute sleep to let fresh nodes turn on SSM fully
+                dir('ansible') {
+                    withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
+                        sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
+                    }
+                }
             }
         }
 
