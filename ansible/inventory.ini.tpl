@@ -1,15 +1,16 @@
-[sonar_active]
-${active_instance_id} ansible_host=${active_ip} ansible_user=ubuntu
+output "alb_dns_name" {
+  value = aws_lb.sonar_alb.dns_name
+}
 
-[sonar_passive]
-${passive_instance_id} ansible_host=${passive_ip} ansible_user=ubuntu
+output "sonar_node_private_ips" {
+  value = aws_instance.sonar_nodes[*].private_ip
+}
 
-[all_nodes:children]
-sonar_active
-sonar_passive
+output "sonar_instance_ids" {
+  description = "The EC2 Instance IDs required by AWS SSM Session Manager"
+  value       = aws_instance.sonar_nodes[*].id
+}
 
-[all_nodes:vars]
-efs_dns_name=${efs_dns}
-
-# Force the background proxy wrapper to reference our locally generated workspace configurations
-ansible_ssh_common_args='-o ProxyCommand="env AWS_SHARED_CREDENTIALS_FILE=.aws/credentials AWS_CONFIG_FILE=.aws/config aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters port=%p" -o StrictHostKeyChecking=no'
+output "efs_dns_name" {
+  value = aws_efs_file_system.sonar_shared.dns_name
+}
