@@ -9,20 +9,24 @@ pipeline {
     }
 
     stages {
-        stage('Checkout Code') { steps { checkout scm } }
+        stage('Checkout Code') { 
+            steps { 
+                checkout scm 
+            } 
+        }
 
-       stage('Terraform Init') {
+        stage('Terraform Init') {
             steps {
-                // Wipe out the old local state cache and the local state files
-                // This forces Terraform to look ONLY at your S3 bucket
                 sh 'rm -rf .terraform .terraform.lock.hcl terraform.tfstate terraform.tfstate.backup'
-                
-                // Initialize freshly against the S3 backend without the input restrictions
                 sh 'terraform init -reconfigure' 
             }
         }
 
-        stage('Terraform Apply') { steps { sh 'terraform apply -auto-approve' } }
+        stage('Terraform Apply') { 
+            steps { 
+                sh 'terraform apply -auto-approve' 
+            } 
+        }
 
         stage('Generate Ansible Inventory') {
             steps {
@@ -37,7 +41,7 @@ pipeline {
                         .replace('${passive_ip}', passiveIp)
                         .replace('${efs_dns}', efsDns)
 
-                    // Inject AWS Keys cleanly into the ProxyCommand text block
+                    // Dynamically inject raw AWS credentials directly into the generated file's ProxyCommand
                     inventoryContent = inventoryContent.replace(
                         'aws ssm start-session',
                         "env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} AWS_DEFAULT_REGION=us-east-1 aws ssm start-session"
@@ -53,15 +57,15 @@ pipeline {
                 sleep 180 
                 dir('ansible') {
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
-                        // The inventory file now contains its own self-sufficient credentials
                         sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
                     }
                 }
             }
-        }        stage('Teardown Approvals Gate') {
+        }
+
+        stage('Teardown Approvals Gate') {
             steps {
                 script {
-                    // This pauses the pipeline run window completely
                     input message: "Infrastructure is live! Do you want to tear down and DESTROY the infrastructure now?", ok: "Yes, Destroy It"
                 }
             }
