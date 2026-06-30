@@ -61,15 +61,20 @@ output = json
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep 60 
+                sleep 180 // Wait for the nodes to spin up
                 dir('ansible') {
                     script {
-                        // Get the active instance ID to test with
+                        // 1. Fetch the active instance ID to test with
                         def activeId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
                         
-                        echo "--- RUNNING DIRECT AWS SSM TUNNEL PROBE ---"
-                        // Force a raw session manager handshake test and dump the real error
+                        echo "========================================================="
+                        echo "CRITICAL TRACE: TESTING RAW AWS SSM CONNECTION DIRECTLY"
+                        echo "========================================================="
+                        
+                        // 2. Run a raw session manager tunnel test and catch its direct output
                         sh "env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} AWS_DEFAULT_REGION=us-east-1 aws ssm start-session --target ${activeId} --document-name AWS-StartSSHSession --parameters port=22 || true"
+                        
+                        echo "========================================================="
                     }
                     
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
