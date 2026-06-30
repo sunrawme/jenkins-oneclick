@@ -49,12 +49,8 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep 180 
-                dir('ansible') {
-                    withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
-                        sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
-                    }
-                }
+                // Temporarily skip this so we can access the destroy stage
+                echo "Skipping playbook to force infrastructure teardown..."
             }
         }
 
