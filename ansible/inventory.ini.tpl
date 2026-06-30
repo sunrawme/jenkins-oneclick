@@ -11,5 +11,5 @@ sonar_passive
 [all_nodes:vars]
 efs_dns_name=${efs_dns}
 
-# Route traffic directly over AWS SSM using custom injected credentials
-ansible_ssh_common_args='-o ProxyCommand="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters port=%p" -o StrictHostKeyChecking=no'
+# Force the background proxy wrapper to reference our locally generated workspace configurations
+ansible_ssh_common_args='-o ProxyCommand="env AWS_SHARED_CREDENTIALS_FILE=.aws/credentials AWS_CONFIG_FILE=.aws/config aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters port=%p" -o StrictHostKeyChecking=no'
