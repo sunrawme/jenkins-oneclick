@@ -23,15 +23,14 @@ pipeline {
         stage('Generate Ansible Inventory') {
             steps {
                 script {
-                    // 1. Fetch IP and configuration mappings from Terraform
-                    def activeIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
-                    def passiveIp = sh(script: "terraform output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
-                    def efsDns = sh(script: "terraform output -raw efs_dns_name", returnStdout: true).trim()
+                    // Force clean extraction using specific raw flags (-raw or json parsing)
+                    def activeIp = sh(script: "terraform -chdir=.. output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
+                    def passiveIp = sh(script: "terraform -chdir=.. output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
+                    def efsDns = sh(script: "terraform -chdir=.. output -raw efs_dns_name", returnStdout: true).trim()
 
-                    def activeId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
-                    def passiveId = sh(script: "terraform output -json sonar_instance_ids | jq -r '.[1]'", returnStdout: true).trim()
+                    def activeId = sh(script: "terraform -chdir=.. output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
+                    def passiveId = sh(script: "terraform -chdir=.. output -json sonar_instance_ids | jq -r '.[1]'", returnStdout: true).trim()
 
-                    // 2. Build out the inventory text file
                     def template = readFile('ansible/inventory.ini.tpl')
                     def inventoryContent = template
                         .replace('${active_ip}', activeIp)
@@ -41,20 +40,6 @@ pipeline {
                         .replace('${efs_dns}', efsDns)
 
                     writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
-
-                    // 3. AUTOMATED FIX: Generate a localized .aws config right here in the workspace
-                    sh 'mkdir -p ansible/.aws'
-                    
-                    def credsContent = """[default]
-aws_access_key_id = ${AWS_ACCESS_KEY_ID}
-aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
-"""
-                    def configContent = """[default]
-region = us-east-1
-output = json
-"""
-                    writeFile(file: 'ansible/.aws/credentials', text: credsContent)
-                    writeFile(file: 'ansible/.aws/config', text: configContent)
                 }
             }
         }
@@ -63,22 +48,7 @@ output = json
             steps {
                 sleep 180 
                 dir('ansible') {
-                    script {
-                        // Gather the target ID safely
-                        def activeId = sh(script: "terraform -chdir=.. output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
-                        
-                        echo "========================================================="
-                        echo "CRITICAL TRACE: TESTING RAW AWS SSM CONNECTION DIRECTLY ON TARGET: ${activeId}"
-                        echo "========================================================="
-                        
-                        // Pass the variable explicitly via environment context block
-                        withEnv(["TARGET_ID=${activeId}"]) {
-                            sh 'env AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION=us-east-1 aws ssm start-session --target $TARGET_ID --document-name AWS-StartSSHSession --parameters port=22 || true'
-                        }
-                        
-                        echo "========================================================="
-                    }
-                    
+                    // Run the playbook cleanly with our validated inventory mappings
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
                         sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
                     }
