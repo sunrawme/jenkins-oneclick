@@ -44,7 +44,7 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                sleep 90 
+                sleep 180 
                 dir('ansible') {
                     // SECURE: Use single quotes to reference variables without Groovy interpolation strings
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
