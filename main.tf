@@ -23,7 +23,7 @@ data "aws_ami" "ubuntu" {
 }
 
 # ==============================================================================
-# --- SECURITY GROUPS ---
+# --- APPLICATION SECURITY GROUPS ---
 # ==============================================================================
 
 resource "aws_security_group" "alb_sg" {
@@ -73,47 +73,8 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-# DELETE THIS ENTIRE BLOCK FROM main.tf
-resource "aws_security_group" "bastion_sg" {
-  name   = "bastion-security-group"
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    description = "SSH from anywhere"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] 
-  }
-}
-
 # ==============================================================================
-# --- COMPUTE: ONE BASTION HOST ---
-# ==============================================================================
-
-resource "aws_instance" "bastion" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "m7i-flex.large" 
-  subnet_id              = aws_subnet.public[0].id 
-  vpc_security_group_ids = [aws_security_group.bastion_sg.id]
-  key_name               = "jenkins-ssh-key"
-
-  tags = { 
-    Name = "Bastion Host"
-    Role = "Bastion-Jump-Box"
-  }
-}
-
-# ==============================================================================
-# --- LOAD BALANCING & ASG AUTOMATION ---
+# --- LOAD BALANCING & TARGET GROUPS ---
 # ==============================================================================
 
 resource "aws_lb" "sonar_alb" {
@@ -198,6 +159,10 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
     }
   }
 }
+
+# ==============================================================================
+# --- AUTOMATION & AUTO SCALING GROUPS ---
+# ==============================================================================
 
 resource "aws_launch_template" "sonar_lt" {
   name_prefix   = "sonarqube-template-"
@@ -352,7 +317,7 @@ resource "aws_cloudwatch_metric_alarm" "tg2_unhealthy" {
 }
 
 # ==============================================================================
-# --- IAM CORE ---
+# --- IAM ROLES & POLICY ATTACHMENTS ---
 # ==============================================================================
 
 resource "aws_iam_role" "ec2_ssm_role" {
