@@ -26,7 +26,6 @@ pipeline {
                 script {
                     // 1. Extract Terraform outputs cleanly
                     def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
-                    def efsDns = sh(script: "terraform output -raw efs_dns_name", returnStdout: true).trim()
 
                     // 2. Query AWS CLI dynamically to fetch the live Private IPs from our two isolated ASGs
                     def activeIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
@@ -42,13 +41,12 @@ pipeline {
 
                     echo "Discovered Live Node IPs -> Active: ${activeIp}, Passive: ${passiveIp}"
 
-                    // 3. Read template and map variables cleanly
+                    // 3. Read template and map variables cleanly (EFS mapping removed)
                     def template = readFile('ansible/inventory.ini.tpl')
                     def inventoryContent = template
                         .replace('\${bastion_ip}', bastionIp)
                         .replace('\${active_ip}', activeIp)
                         .replace('\${passive_ip}', passiveIp)
-                        .replace('\${efs_dns}', efsDns)
 
                     writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
                 }
