@@ -2,20 +2,24 @@
 # --- DYNAMIC AMIs & LOOKUPS ---
 # ==============================================================================
 
-# Optimized to match the official Canonical structural string for 24.04 LTS
+# Highly reliable lookup targeting standard Canonical Ubuntu 24.04 LTS official releases
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Official Canonical Owner ID
+  owners      = ["099720109477"] # Canonical's official ID
 
   filter {
     name   = "name"
-    # Adjusted pattern to capture standard released images
-    values = ["ubuntu/images/hvm-ssd/ubuntu-noble-24.04-amd64-server-*"]
+    values = ["ubuntu/images/*ubuntu-noble-24.04-amd64-server-*"]
   }
 
   filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
   }
 }
 
