@@ -281,40 +281,6 @@ resource "aws_sns_topic_subscription" "email_target" {
   endpoint  = "sunraw541@gmail.com"
 }
 
-resource "aws_cloudwatch_metric_alarm" "tg1_unhealthy" {
-  alarm_name          = "sonarqube-tg-az1-unhealthy-alarm"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "UnHealthyHostCount"
-  namespace           = "AWS/ApplicationELB"
-  period              = "60"
-  statistic           = "Average"
-  threshold           = "1"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    TargetGroup  = aws_lb_target_group.sonar_tg_az1.arn_suffix
-    LoadBalancer = aws_lb.sonar_alb.arn_suffix
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "tg2_unhealthy" {
-  alarm_name          = "sonarqube-tg-az2-unhealthy-alarm"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "UnHealthyHostCount"
-  namespace           = "AWS/ApplicationELB"
-  period              = "60"
-  statistic           = "Average"
-  threshold           = "1"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    TargetGroup  = aws_lb_target_group.sonar_tg_az2.arn_suffix
-    LoadBalancer = aws_lb.sonar_alb.arn_suffix
-  }
-}
-
 resource "aws_cloudwatch_metric_alarm" "asg_az1_cpu" {
   alarm_name          = "sonarqube-asg-az1-high-cpu"
   comparison_operator = "GreaterThanThreshold"
@@ -342,7 +308,28 @@ resource "aws_cloudwatch_metric_alarm" "asg_az2_cpu" {
   statistic           = "Average"
   threshold           = "80"
   alarm_description   = "Monitors average CPU load across ASG Pinned to AZ2"
-  alarm_actions       = [aws_autoscaling_group.sonar_asg_az2.name]
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.sonar_asg_az2.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "tg2_unhealthy" {
+  alarm_name          = "sonarqube-tg-az2-unhealthy-alarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "UnHealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "1"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.sonar_tg_az2.arn_suffix
+    LoadBalancer = aws_lb.sonar_alb.arn_suffix
+  }
 }
 
 # ==============================================================================
