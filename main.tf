@@ -2,10 +2,9 @@
 # --- DYNAMIC AMIs & LOOKUPS ---
 # ==============================================================================
 
-# Highly reliable lookup targeting standard Canonical Ubuntu 24.04 LTS official releases
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical's official ID
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
@@ -74,27 +73,15 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-resource "aws_security_group" "efs_sg" {
-  name   = "efs-security-group"
-  vpc_id = aws_vpc.main.id
-  
-  ingress {
-    from_port       = 2049
-    to_port         = 2049
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ec2_sg.id]
-  }
-}
+# NOTE: EFS Security Group removed as requested
 
 # ==============================================================================
-# --- COMPUTE: ONE TAGGED BASTION HOST ---
+# --- COMPUTE: ONE BASTION HOST ---
 # ==============================================================================
 
 resource "aws_instance" "bastion" {
   ami           = data.aws_ami.ubuntu.id
-  # UPDATED: Swapped to the instance type selected in image_6d2c9b.png
   instance_type = "m7i-flex.large" 
-  
   subnet_id     = aws_subnet.public[0].id 
   
   vpc_security_group_ids = [aws_security_group.bastion_sg.id]
@@ -107,23 +94,7 @@ resource "aws_instance" "bastion" {
 }
 
 # ==============================================================================
-# --- STORAGE LAYER (EFS) ---
-# ==============================================================================
-
-resource "aws_efs_file_system" "sonar_shared" {
-  creation_token = "sonar-shared-efs"
-  tags           = { Name = "SonarQube-EFS" }
-}
-
-resource "aws_efs_mount_target" "alpha" {
-  count           = 2
-  file_system_id  = aws_efs_file_system.sonar_shared.id
-  subnet_id       = aws_subnet.private[count.index].id
-  security_groups = [aws_security_group.efs_sg.id]
-}
-
-# ==============================================================================
-# --- LOAD BALANCING & COMPUTE AUTOMATION (ASG) ---
+# --- LOAD BALANCING & ASG AUTOMATION ---
 # ==============================================================================
 
 resource "aws_lb" "sonar_alb" {
@@ -209,11 +180,9 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
   }
 }
 
-# Shared Launch Template utilizing our dynamic Ubuntu 24.04 Lookup
 resource "aws_launch_template" "sonar_lt" {
   name_prefix   = "sonarqube-template-"
   image_id      = data.aws_ami.ubuntu.id
-  # UPDATED: Swapped to match your preferred scale size
   instance_type = "m7i-flex.large" 
   key_name      = "jenkins-ssh-key"
 
@@ -246,7 +215,6 @@ resource "aws_launch_template" "sonar_lt" {
   }
 }
 
-# Auto Scaling Group 1: Pinned to AZ-1 Private Space
 resource "aws_autoscaling_group" "sonar_asg_az1" {
   name                = "sonarqube-asg-az1"
   desired_capacity    = 1
@@ -273,7 +241,6 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
   }
 }
 
-# Auto Scaling Group 2: Pinned to AZ-2 Private Space
 resource "aws_autoscaling_group" "sonar_asg_az2" {
   name                = "sonarqube-asg-az2"
   desired_capacity    = 1
@@ -375,11 +342,7 @@ resource "aws_cloudwatch_metric_alarm" "asg_az2_cpu" {
   statistic           = "Average"
   threshold           = "80"
   alarm_description   = "Monitors average CPU load across ASG Pinned to AZ2"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.sonar_asg_az2.name
-  }
+  alarm_actions       = [aws_autoscaling_group.sonar_asg_az2.name]
 }
 
 # ==============================================================================
