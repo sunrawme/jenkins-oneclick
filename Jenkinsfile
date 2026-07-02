@@ -24,22 +24,30 @@ pipeline {
         stage('Generate Ansible Inventory') {
             steps {
                 script {
-                    // Extract data safely using -chdir=.. to look up one directory tier
-                    def activeIp = sh(script: "terraform -chdir=.. output -json sonar_node_private_ips | jq -r '.[0]'", returnStdout: true).trim()
-                    def passiveIp = sh(script: "terraform -chdir=.. output -json sonar_node_private_ips | jq -r '.[1]'", returnStdout: true).trim()
-                    def efsDns = sh(script: "terraform -chdir=.. output -raw efs_dns_name", returnStdout: true).trim()
+                    // 1. Extract Terraform outputs cleanly
+                    def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
+                    def efsDns = sh(script: "terraform output -raw efs_dns_name", returnStdout: true).trim()
 
-                    def activeId = sh(script: "terraform -chdir=.. output -json sonar_instance_ids | jq -r '.[0]'", returnStdout: true).trim()
-                    def passiveId = sh(script: "terraform -chdir=.. output -json sonar_instance_ids | jq -r '.[1]'", returnStdout: true).trim()
+                    // 2. Query AWS CLI dynamically to fetch the live Private IPs from our two isolated ASGs
+                    def activeIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
+                    def passiveIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az2' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
 
+                    // Fallback to avoid empty strings if the ASG is still spawning the instance
+                    if (!activeIp || !passiveIp) {
+                        echo "Waiting 30 seconds for ASG instances to register IP addresses..."
+                        sleep 30
+                        activeIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
+                        passiveIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az2' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
+                    }
+
+                    echo "Discovered Live Node IPs -> Active: ${activeIp}, Passive: ${passiveIp}"
+
+                    // 3. Read template and map variables cleanly
                     def template = readFile('ansible/inventory.ini.tpl')
-                    
-                    // Escaped the template dollar signs so Groovy parses them as plaintext tokens
                     def inventoryContent = template
+                        .replace('\${bastion_ip}', bastionIp)
                         .replace('\${active_ip}', activeIp)
                         .replace('\${passive_ip}', passiveIp)
-                        .replace('\${active_instance_id}', activeId)
-                        .replace('\${passive_instance_id}', passiveId)
                         .replace('\${efs_dns}', efsDns)
 
                     writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
@@ -49,22 +57,28 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                // Temporarily skip this so we can access the destroy stage
-                echo "Skipping playbook to force infrastructure teardown..."
+                // Give the co-located database and OS processes a small moment to stabilize
+                sleep 60 
+                dir('ansible') {
+                    withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
+                        // Ansible routes over the proxy jump block built into the inventory
+                        sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
+                    }
+                }
             }
         }
 
         stage('Teardown Approvals Gate') {
             steps {
                 script {
-                    input message: "Infrastructure is live! Do you want to tear down and DESTROY the infrastructure now?", ok: "Yes, Destroy It"
+                    input message: "Infrastructure is live matching sonarqube-architecture-v3! Do you want to tear down and DESTROY it?", ok: "Yes, Destroy It"
                 }
             }
         }
 
         stage('Terraform Destroy') {
             steps {
-                echo "Cleaning up infrastructure..."
+                echo "Cleaning up architecture infrastructure..."
                 sh 'terraform destroy -auto-approve'
             }
         }
