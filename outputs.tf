@@ -21,8 +21,3 @@ output "target_group_az2_arn_suffix" {
   value       = aws_lb_target_group.sonar_tg_az2.arn_suffix
 }
 
-# Output the EFS DNS Name (if required by your storage playbooks)
-output "efs_dns_name" {
-  description = "The DNS name of the shared EFS filesystem"
-  value       = aws_efs_file_system.sonar_shared.dns_name
-}
