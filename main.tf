@@ -85,11 +85,11 @@ resource "aws_security_group" "bastion_sg" {
   vpc_id = aws_vpc.main.id
 
   ingress {
-    description = "SSH from anywhere or your corporate IP"
+    description = "SSH from anywhere"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] 
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -97,7 +97,7 @@ resource "aws_security_group" "bastion_sg" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] # This is required so Bastion can talk to your private subnets!
+    cidr_blocks = ["0.0.0.0/0"] # Crucial for connecting to the private nodes
   }
 }
 # ==============================================================================
