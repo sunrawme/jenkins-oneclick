@@ -27,13 +27,14 @@
         - { type: 'soft', item: 'nofile', value: '131072' }
         - { type: 'hard', item: 'nofile', value: '131072' }
 
-    - name: Install Java 17 and NFS common tools
+    - name: Install Java 17 and Prerequisites
       apt:
         name:
           - openjdk-17-jdk
-          - nfs-common
           - postgresql
           - postgresql-contrib
+          - python3-psycopg2
+          - unzip
         state: present
 
     - name: Create SonarQube installation directory
@@ -43,30 +44,27 @@
         owner: ubuntu
         group: ubuntu
 
-    - name: Mount EFS Shared Storage for SonarQube Data
-      mount:
-        path: /opt/sonarqube/data
-        src: "{{ efs_dns_name }}:/"
-        fstype: nfs4
-        opts: nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport
-        state: mounted
-
-- name: Configure PostgreSQL Active (Primary) Instance
-  hosts: sonar_active
+- name: Configure PostgreSQL on Co-located Nodes
+  hosts: all_nodes
   become: yes
   tasks:
-    - name: Configure Postgres to listen on all interfaces
+    - name: Configure Postgres to listen on local interface
       lineinfile:
         path: /etc/postgresql/14/main/postgresql.conf
         regexp: "^#?listen_addresses ="
         line: "listen_addresses = '*'"
       notify: Restart Postgres
 
-    - name: Allow Passive node connection in pg_hba.conf
+    - name: Ensure md5 authentication for local connections
       lineinfile:
         path: /etc/postgresql/14/main/pg_hba.conf
-        line: "host replication replication 0.0.0.0/0 md5"
+        regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+'
+        line: "host    all             all             127.0.0.1/32            md5"
       notify: Restart Postgres
+
+    # Force handlers to execute immediately to ensure Postgres is running before creating databases
+    - name: Flush handlers
+      meta: flush_handlers
 
     - name: Create SonarQube Database User
       become_user: postgres
@@ -96,9 +94,6 @@
         url: https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.2.1.78527.zip
         dest: /tmp/sonarqube.zip
 
-    - name: Install unzip
-      apt: name=unzip state=present
-
     - name: Unzip SonarQube
       unarchive:
         src: /tmp/sonarqube.zip
@@ -115,8 +110,10 @@
       with_items:
         - { regex: '^#?sonar.jdbc.username=', line: 'sonar.jdbc.username=sonar' }
         - { regex: '^#?sonar.jdbc.password=', line: 'sonar.jdbc.password=SecureSonarPassword123!' }
-        - { regex: '^#?sonar.jdbc.url=jdbc:postgresql', line: 'sonar.jdbc.url=jdbc:postgresql://localhost/sonar' }
+        - { regex: '^#?sonar.jdbc.url=jdbc:postgresql://localhost/sonar', line: 'sonar.jdbc.url=jdbc:postgresql://localhost/sonar' }
 
-    - name: Start SonarQube Service
+    - name: Start SonarQube Service Asynchronously
       shell: /opt/sonarqube-10.2.1.78527/bin/linux-x86-64/sonar.sh start
       become_user: ubuntu
+      async: 10
+      poll: 0
