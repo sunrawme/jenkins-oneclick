@@ -2,14 +2,15 @@
 # --- DYNAMIC AMIs & LOOKUPS ---
 # ==============================================================================
 
-# UPDATED: Configured to dynamically lookup the latest official Ubuntu 24.04 LTS (Noble) image
+# Optimized to match the official Canonical structural string for 24.04 LTS
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical
+  owners      = ["099720109477"] # Official Canonical Owner ID
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd-amd64/ubuntu-noble-24.04-amd64-server-*"]
+    # Adjusted pattern to capture standard released images
+    values = ["ubuntu/images/hvm-ssd/ubuntu-noble-24.04-amd64-server-*"]
   }
 
   filter {
