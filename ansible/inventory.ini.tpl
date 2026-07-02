@@ -1,15 +1,15 @@
-[sonar_active]
-${active_instance_id} ansible_host=${active_ip} ansible_user=ubuntu
+[bastion]
+bastion_host ansible_host=${bastion_ip} ansible_user=ubuntu
 
-[sonar_passive]
-${passive_instance_id} ansible_host=${passive_ip} ansible_user=ubuntu
+[sonarqube_nodes]
+sonar_node_1 ansible_host=${active_ip} ansible_user=ubuntu
+sonar_node_2 ansible_host=${passive_ip} ansible_user=ubuntu
 
-[all_nodes:children]
-sonar_active
-sonar_passive
+[all:vars]
+# Tell Ansible to route all traffic to the sonarqube_nodes through the Bastion Host
+ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -q -i {{ lookup(\'env\', \'KEY_FILE\') }} -o StrictHostKeyChecking=no ubuntu@${bastion_ip}"'
+ansible_ssh_private_key_file="{{ lookup('env', 'KEY_FILE') }}"
+ansible_ssh_extra_args='-o StrictHostKeyChecking=no'
 
-[all_nodes:vars]
+# Architectural variables for your playbooks
 efs_dns_name=${efs_dns}
-
-# FIXED: Removed the invalid custom port parameter string
-ansible_ssh_common_args='-o ProxyCommand="aws ssm start-session --target %h --document-name AWS-StartSSHSession" -o StrictHostKeyChecking=no'
