@@ -1,16 +1,28 @@
+# Output the Public IP of the Bastion Host (Our new entry point for Ansible)
+output "bastion_public_ip" {
+  description = "The public IP address of the Bastion host"
+  value       = aws_instance.bastion.public_ip
+}
+
+# Output the DNS Name of our Application Load Balancer
 output "alb_dns_name" {
-  value = aws_lb.sonar_alb.dns_name
+  description = "The DNS name of the Application Load Balancer"
+  value       = aws_lb.sonar_alb.dns_name
 }
 
-output "sonar_node_private_ips" {
-  value = aws_instance.sonar_nodes[*].private_ip
+# Output the Target Group ARN Suffixes for any external tracking scripts
+output "target_group_az1_arn_suffix" {
+  description = "The ARN suffix of Target Group 1 (AZ1)"
+  value       = aws_lb_target_group.sonar_tg_az1.arn_suffix
 }
 
-output "sonar_instance_ids" {
-  description = "The EC2 Instance IDs required by AWS SSM Session Manager"
-  value       = aws_instance.sonar_nodes[*].id
+output "target_group_az2_arn_suffix" {
+  description = "The ARN suffix of Target Group 2 (AZ2)"
+  value       = aws_lb_target_group.sonar_tg_az2.arn_suffix
 }
 
+# Output the EFS DNS Name (if required by your storage playbooks)
 output "efs_dns_name" {
-  value = aws_efs_file_system.sonar_shared.dns_name
+  description = "The DNS name of the shared EFS filesystem"
+  value       = aws_efs_file_system.sonar_shared.dns_name
 }
