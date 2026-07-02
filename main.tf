@@ -73,6 +73,7 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
+# DELETE THIS ENTIRE BLOCK FROM main.tf
 resource "aws_security_group" "bastion_sg" {
   name   = "bastion-security-group"
   vpc_id = aws_vpc.main.id
