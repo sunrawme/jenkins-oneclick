@@ -71,13 +71,13 @@ resource "aws_route_table_association" "private" {
 }
 
 # --- BASTION ENTRYPOINT (Public Subnet AZ-1) ---
+# LEAVE THIS IN network_and_bastion.tf
 resource "aws_security_group" "bastion_sg" {
-  name        = "bastion-security-group"
-  description = "Allow inbound SSH traffic to Bastion"
-  vpc_id      = aws_vpc.main.id
+  name   = "bastion-security-group"
+  vpc_id = aws_vpc.main.id
 
   ingress {
-    description = "SSH from internet"
+    description = "SSH from anywhere"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -85,12 +85,11 @@ resource "aws_security_group" "bastion_sg" {
   }
 
   egress {
+    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0"] # Required for proxying connection down to Sonar nodes
   }
-
-  tags = { Name = "sg-bastion" }
 }
 
