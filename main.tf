@@ -73,13 +73,6 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-# NOTE: EFS Security Group removed as requested
-
-# ==============================================================================
-# --- COMPUTE: ONE BASTION HOST ---
-# ==============================================================================
-
-# Double-check that your Bastion SG looks like this:
 resource "aws_security_group" "bastion_sg" {
   name   = "bastion-security-group"
   vpc_id = aws_vpc.main.id
@@ -97,9 +90,27 @@ resource "aws_security_group" "bastion_sg" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] # Crucial for connecting to the private nodes
+    cidr_blocks = ["0.0.0.0/0"] 
   }
 }
+
+# ==============================================================================
+# --- COMPUTE: ONE BASTION HOST ---
+# ==============================================================================
+
+resource "aws_instance" "bastion" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = "m7i-flex.large" 
+  subnet_id              = aws_subnet.public[0].id 
+  vpc_security_group_ids = [aws_security_group.bastion_sg.id]
+  key_name               = "jenkins-ssh-key"
+
+  tags = { 
+    Name = "Bastion Host"
+    Role = "Bastion-Jump-Box"
+  }
+}
+
 # ==============================================================================
 # --- LOAD BALANCING & ASG AUTOMATION ---
 # ==============================================================================
