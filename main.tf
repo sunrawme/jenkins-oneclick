@@ -79,20 +79,27 @@ resource "aws_security_group" "ec2_sg" {
 # --- COMPUTE: ONE BASTION HOST ---
 # ==============================================================================
 
-resource "aws_instance" "bastion" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "m7i-flex.large" 
-  subnet_id     = aws_subnet.public[0].id 
-  
-  vpc_security_group_ids = [aws_security_group.bastion_sg.id]
-  key_name               = "jenkins-ssh-key"
+# Double-check that your Bastion SG looks like this:
+resource "aws_security_group" "bastion_sg" {
+  name   = "bastion-security-group"
+  vpc_id = aws_vpc.main.id
 
-  tags = { 
-    Name = "Bastion Host"
-    Role = "Bastion-Jump-Box"
+  ingress {
+    description = "SSH from anywhere or your corporate IP"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] 
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"] # This is required so Bastion can talk to your private subnets!
   }
 }
-
 # ==============================================================================
 # --- LOAD BALANCING & ASG AUTOMATION ---
 # ==============================================================================
