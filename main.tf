@@ -112,32 +112,34 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-resource "aws_security_group" "efs_sg" {
-  name   = "efs-security-group"
-  vpc_id = aws_vpc.main.id
+resource "aws_security_group" "ec2_sg" {
+  name        = "sonar-ec2-security-group"
+  vpc_id      = aws_vpc.main.id
+
   ingress {
-    from_port       = 2049 # NFS Port
-    to_port         = 2049
+    description     = "SonarQube Web Port from ALB"
+    from_port       = 9000
+    to_port         = 9000
     protocol        = "tcp"
-    security_groups = [aws_security_group.ec2_sg.id]
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+
+  # UPDATED: Restricted SSH access to accept ONLY connections via the Bastion Host
+  ingress {
+    description     = "SSH strictly from Bastion"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id] 
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }
-
-
-# --- STORAGE LAYER (EFS) ---
-resource "aws_efs_file_system" "sonar_shared" {
-  creation_token = "sonar-shared-efs"
-  tags           = { Name = "SonarQube-EFS" }
-}
-
-resource "aws_efs_mount_target" "alpha" {
-  count           = 2
-  file_system_id  = aws_efs_file_system.sonar_shared.id
-  subnet_id       = aws_subnet.private[count.index].id
-  security_groups = [aws_security_group.efs_sg.id]
-}
-
-
 # --- COMPUTE & LOAD BALANCING ---
 resource "aws_lb" "sonar_alb" {
   name               = "sonarqube-alb"
