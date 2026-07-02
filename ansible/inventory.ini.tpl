@@ -1,13 +1,10 @@
-[all_nodes]
-sonar_node_active ansible_host=${active_ip}
-sonar_node_passive ansible_host=${passive_ip}
+[bastion]
+bastion_host ansible_host=<YOUR_BASTION_PUBLIC_IP> ansible_user=ubuntu
 
-[sonar_active]
-sonar_node_active ansible_host=${active_ip}
+[sonarqube_nodes]
+sonar_node_active  ansible_host=10.0.3.x  ansible_user=ubuntu
+sonar_node_passive ansible_host=10.0.4.x  ansible_user=ubuntu
 
-[sonar_passive]
-sonar_node_passive ansible_host=${passive_ip}
-
-[all_nodes:vars]
-ansible_user=ubuntu
-ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyCommand="ssh -W %h:%p -q ubuntu@${bastion_ip} -o StrictHostKeyChecking=no"'
+[all:vars]
+# This magic line forces Ansible to tunnel through the bastion to reach the private nodes
+ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -q ubuntu@<YOUR_BASTION_PUBLIC_IP> -i /path/to/jenkins-ssh-key"'
