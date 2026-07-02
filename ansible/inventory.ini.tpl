@@ -11,5 +11,4 @@ ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -q -i {{ lookup(\'env\', 
 ansible_ssh_private_key_file="{{ lookup('env', 'KEY_FILE') }}"
 ansible_ssh_extra_args='-o StrictHostKeyChecking=no'
 
-# Architectural variables for your playbooks
-efs_dns_name=${efs_dns}
+
