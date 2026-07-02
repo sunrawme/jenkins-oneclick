@@ -1,4 +1,24 @@
 # ==============================================================================
+# --- DYNAMIC AMIs & LOOKUPS ---
+# ==============================================================================
+
+# UPDATED: Configured to dynamically lookup the latest official Ubuntu 24.04 LTS (Noble) image
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-amd64/ubuntu-noble-24.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# ==============================================================================
 # --- SECURITY GROUPS ---
 # ==============================================================================
 
@@ -62,6 +82,26 @@ resource "aws_security_group" "efs_sg" {
 }
 
 # ==============================================================================
+# --- COMPUTE: ONE TAGGED BASTION HOST ---
+# ==============================================================================
+
+resource "aws_instance" "bastion" {
+  ami           = data.aws_ami.ubuntu.id
+  # UPDATED: Swapped to the instance type selected in image_6d2c9b.png
+  instance_type = "m7i-flex.large" 
+  
+  subnet_id     = aws_subnet.public[0].id 
+  
+  vpc_security_group_ids = [aws_security_group.bastion_sg.id]
+  key_name               = "jenkins-ssh-key"
+
+  tags = { 
+    Name = "Bastion Host"
+    Role = "Bastion-Jump-Box"
+  }
+}
+
+# ==============================================================================
 # --- STORAGE LAYER (EFS) ---
 # ==============================================================================
 
@@ -78,7 +118,7 @@ resource "aws_efs_mount_target" "alpha" {
 }
 
 # ==============================================================================
-# --- COMPUTE & LOAD BALANCING (WITH RULES & ASG) ---
+# --- LOAD BALANCING & COMPUTE AUTOMATION (ASG) ---
 # ==============================================================================
 
 resource "aws_lb" "sonar_alb" {
@@ -89,7 +129,6 @@ resource "aws_lb" "sonar_alb" {
   subnets            = aws_subnet.public[*].id
 }
 
-# Target Group 1 - Pinned to AZ1
 resource "aws_lb_target_group" "sonar_tg_az1" {
   name     = "sonarqube-tg-az1"
   port     = 9000
@@ -106,7 +145,6 @@ resource "aws_lb_target_group" "sonar_tg_az1" {
   }
 }
 
-# Target Group 2 - Pinned to AZ2
 resource "aws_lb_target_group" "sonar_tg_az2" {
   name     = "sonarqube-tg-az2"
   port     = 9000
@@ -123,20 +161,17 @@ resource "aws_lb_target_group" "sonar_tg_az2" {
   }
 }
 
-# Main Application Load Balancer HTTP Listener
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.sonar_alb.arn
   port              = "80"
   protocol          = "HTTP"
   
-  # Default action path per diagram: forward to TG-AZ1
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.sonar_tg_az1.arn
   }
 }
 
-# Rule A: Host-Based Routing Rule for sonar1.company.com -> TG-AZ1
 resource "aws_lb_listener_rule" "sonar1_rule" {
   listener_arn = aws_lb_listener.http.arn
   priority     = 10
@@ -153,7 +188,6 @@ resource "aws_lb_listener_rule" "sonar1_rule" {
   }
 }
 
-# Rule B: Host-Based Routing Rule for sonar2.company.com -> TG-AZ2
 resource "aws_lb_listener_rule" "sonar2_rule" {
   listener_arn = aws_lb_listener.http.arn
   priority     = 20
@@ -170,25 +204,12 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
   }
 }
 
-# Base OS Lookup Image data resource
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-  owners = ["099720109477"]
-}
-
-# Shared Launch Template for Auto Scaling Groups
+# Shared Launch Template utilizing our dynamic Ubuntu 24.04 Lookup
 resource "aws_launch_template" "sonar_lt" {
   name_prefix   = "sonarqube-template-"
   image_id      = data.aws_ami.ubuntu.id
-  instance_type = var.instance_type
+  # UPDATED: Swapped to match your preferred scale size
+  instance_type = "m7i-flex.large" 
   key_name      = "jenkins-ssh-key"
 
   iam_instance_profile {
@@ -220,7 +241,7 @@ resource "aws_launch_template" "sonar_lt" {
   }
 }
 
-# Auto Scaling Group 1: Pinned to Private Subnet 1 (AZ-1)
+# Auto Scaling Group 1: Pinned to AZ-1 Private Space
 resource "aws_autoscaling_group" "sonar_asg_az1" {
   name                = "sonarqube-asg-az1"
   desired_capacity    = 1
@@ -247,7 +268,7 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
   }
 }
 
-# Auto Scaling Group 2: Pinned to Private Subnet 2 (AZ-2)
+# Auto Scaling Group 2: Pinned to AZ-2 Private Space
 resource "aws_autoscaling_group" "sonar_asg_az2" {
   name                = "sonarqube-asg-az2"
   desired_capacity    = 1
@@ -288,7 +309,6 @@ resource "aws_sns_topic_subscription" "email_target" {
   endpoint  = "sunraw541@gmail.com"
 }
 
-# Target Group Unhealthy Host Count Tracking Alarm (Tracks both TGs)
 resource "aws_cloudwatch_metric_alarm" "tg1_unhealthy" {
   alarm_name          = "sonarqube-tg-az1-unhealthy-alarm"
   comparison_operator = "GreaterThanThreshold"
@@ -323,7 +343,6 @@ resource "aws_cloudwatch_metric_alarm" "tg2_unhealthy" {
   }
 }
 
-# Group-Wide CPU Utilization Tracking Alarms
 resource "aws_cloudwatch_metric_alarm" "asg_az1_cpu" {
   alarm_name          = "sonarqube-asg-az1-high-cpu"
   comparison_operator = "GreaterThanThreshold"
@@ -359,7 +378,7 @@ resource "aws_cloudwatch_metric_alarm" "asg_az2_cpu" {
 }
 
 # ==============================================================================
-# --- IAM ROLE FOR SSM ---
+# --- IAM CORE ---
 # ==============================================================================
 
 resource "aws_iam_role" "ec2_ssm_role" {
