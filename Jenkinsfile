@@ -21,37 +21,36 @@ pipeline {
             }
         }
 
-       stage('Execute Commands via Bastion') {
-    steps {
-        script {
-            // ... (IP fetching code) ...
+        stage('Execute Commands via Bastion') {
+            steps {
+                script {
+                    // FIX: Fetch the actual IP so ${bastionIp} isn't empty/undefined
+                    def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
 
-            withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
-                sh """#!/bin/bash
-echo "Testing connectivity to Bastion host..."
-for i in {1..10}; do
-    echo "Connection attempt \${i}/10..."
-    if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i \$BASTION_KEY ubuntu@${bastionIp} exit 2>&1 | grep -q "Permission denied"; then
-        echo "Success: Bastion SSH port is open and accepting keys!"
-        break
-    elif [ \${i} -eq 10 ]; then
-        echo "FAIL: Bastion connection dropped."
-        exit 255
-    fi
-    sleep 15
-done
-"""
-                    # ... (rest of your SSH proxy command) ...
-                '
+                    withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
+                        sh """#!/bin/bash
+                        echo "Testing connectivity to Bastion host at ${bastionIp}..."
+                        for i in {1..10}; do
+                            echo "Connection attempt \${i}/10..."
+                            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i \$BASTION_KEY ubuntu@${bastionIp} exit 2>&1 | grep -q "Permission denied"; then
+                                echo "Success: Bastion SSH port is open and accepting keys!"
+                                break
+                            elif [ \${i} -eq 10 ]; then
+                                echo "FAIL: Bastion connection dropped."
+                                exit 255
+                            fi
+                            sleep 15
+                        done
+                        """
+                    }
+                }
             }
         }
-    }
-}
 
         stage('Ansible Playbook Execution') {
             steps {
                 script {
-                    def bastionIp = sh(script: "terraform output -raw bastion_private_ip", returnStdout: true).trim()
+                    def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
                     def targetIp = sh(script: "aws ec2 describe-instances --filters 'Name=instance-state-name,Values=running,pending' --query \"Reservations[*].Instances[?PrivateIpAddress!='${bastionIp}'].PrivateIpAddress\" --output text | head -n 1", returnStdout: true).trim()
 
                     dir('ansible') {
