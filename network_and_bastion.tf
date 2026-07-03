@@ -140,6 +140,12 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids = [aws_security_group.bastion_sg.id]
   key_name               = "jenkins-ssh-key"
 
+  tags = {
+    Name = "Bastion Host"
+    Role = "Bastion-Jump-Box"
+  }
+} # <--- MAKE SURE THIS CLOSING BRACE IS HERE!
+
 # ==============================================================================
 # --- OUTPUT VALUES FOR JENKINS PIPELINE ---
 # ==============================================================================
@@ -147,4 +153,5 @@ resource "aws_instance" "bastion" {
 output "bastion_public_ip" {
   value       = aws_instance.bastion.public_ip
   description = "The public IP of the Bastion Jump Box used by Jenkins/Ansible"
+} # <--- AND THIS CLOSING BRACE TO FINISH THE OUTPUTn = "The public IP of the Bastion Jump Box used by Jenkins/Ansible"
 }
