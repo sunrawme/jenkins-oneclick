@@ -1,57 +1,19 @@
-# ==============================================================================
-# --- DYNAMIC AMIs & LOOKUPS ---
-# ==============================================================================
-
+# --- DYNAMIC AMIs ---
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical
+  owners      = ["099720109477"]
 
   filter {
     name   = "name"
     values = ["ubuntu/images/*ubuntu-noble-24.04-amd64-server-*"]
   }
-
   filter {
     name   = "architecture"
     values = ["x86_64"]
   }
-
-  filter {
-    name   = "root-device-type"
-    values = ["ebs"]
-  }
 }
 
-# ==============================================================================
 # --- APPLICATION SECURITY GROUPS ---
-# ==============================================================================
-
-# FIX: Added the missing Bastion Security Group that your EC2 Security Group relies on
-resource "aws_security_group" "bastion_sg" {
-  name        = "bastion-security-group"
-  description = "Allow SSH to Bastion host"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "SSH from everywhere"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Change this to your Jenkins Agent IP for production hardened setups
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "bastion-security-group"
-  }
-}
-
 resource "aws_security_group" "alb_sg" {
   name   = "alb-security-group"
   vpc_id = aws_vpc.main.id
@@ -62,7 +24,6 @@ resource "aws_security_group" "alb_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  
   egress {
     from_port   = 0
     to_port     = 0
@@ -82,7 +43,6 @@ resource "aws_security_group" "ec2_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
-  
   ingress {
     description     = "SSH strictly from Bastion"
     from_port       = 22
@@ -90,7 +50,6 @@ resource "aws_security_group" "ec2_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.bastion_sg.id] 
   }
-  
   egress {
     from_port   = 0
     to_port     = 0
@@ -99,34 +58,7 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-# ==============================================================================
-# --- BASTION INSTANCE ---
-# ==============================================================================
-
-# FIX: Added the missing Bastion EC2 host so Jenkins has an endpoint to proxy through
-resource "aws_instance" "bastion" {
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = "t3.micro"
-  subnet_id                   = aws_subnet.public[0].id # Placed in public subnet to receive traffic
-  vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
-  key_name                    = "jenkins-ssh-key"
-  associate_public_ip_address = true
-
-  tags = {
-    Name = "bastion-host"
-  }
-}
-
-# FIX: Added the output variable expected by your Jenkinsfile pipeline script
-output "bastion_private_ip" {
-  value       = aws_instance.bastion.private_ip
-  description = "The private IP address of the Bastion host"
-}
-
-# ==============================================================================
-# --- LOAD BALANCING & TARGET GROUPS ---
-# ==============================================================================
-
+# --- LOAD BALANCING ---
 resource "aws_lb" "sonar_alb" {
   name               = "sonarqube-alb"
   internal           = false
@@ -142,12 +74,8 @@ resource "aws_lb_target_group" "sonar_tg_az1" {
   vpc_id   = aws_vpc.main.id
   
   health_check {
-    path                = "/api/system/status"
-    port                = "9000"
-    healthy_threshold   = 3
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
+    path = "/api/system/status"
+    port = "9000"
   }
 }
 
@@ -158,12 +86,8 @@ resource "aws_lb_target_group" "sonar_tg_az2" {
   vpc_id   = aws_vpc.main.id
   
   health_check {
-    path                = "/api/system/status"
-    port                = "9000"
-    healthy_threshold   = 3
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
+    path = "/api/system/status"
+    port = "9000"
   }
 }
 
@@ -178,42 +102,7 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-resource "aws_lb_listener_rule" "sonar1_rule" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 10
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.sonar_tg_az1.arn
-  }
-
-  condition {
-    host_header {
-      values = ["sonar1.company.com"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "sonar2_rule" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 20
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.sonar_tg_az2.arn
-  }
-
-  condition {
-    host_header {
-      values = ["sonar2.company.com"]
-    }
-  }
-}
-
-# ==============================================================================
-# --- AUTOMATION & AUTO SCALING GROUPS ---
-# ==============================================================================
-
+# --- LAUNCH TEMPLATE & AUTO SCALING GROUPS ---
 resource "aws_launch_template" "sonar_lt" {
   name_prefix   = "sonarqube-template-"
   image_id      = data.aws_ami.ubuntu.id
@@ -225,22 +114,7 @@ resource "aws_launch_template" "sonar_lt" {
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  user_data = base64encode(<<-EOF
-              #!/bin/bash
-              echo "Initializing core node OS settings..."
-              EOF
-  )
-
-  tag_specifications {
-    resource_type = "instance"
-    tags = {
-      Name = "sonarqube-asg-node"
-    }
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
+  user_data = base64encode("#!/bin/bash\necho 'Initializing core node OS settings...'")
 }
 
 resource "aws_autoscaling_group" "sonar_asg_az1" {
@@ -256,16 +130,9 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
     version = "$Latest"
   }
 
-  # FIX: Adjusted tag values to keep a uniform naming layout that matches your search filter pattern
   tag {
     key                 = "Name"
     value               = "sonarqube-asg-node-01"
-    propagate_at_launch = true
-  }
-
-  tag {
-    key                 = "Role"
-    value               = "active"
     propagate_at_launch = true
   }
 }
@@ -283,82 +150,9 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
     version = "$Latest"
   }
 
-  # FIX: Adjusted tag values to keep a uniform naming layout that matches your search filter pattern
   tag {
     key                 = "Name"
     value               = "sonarqube-asg-node-02"
     propagate_at_launch = true
-  }
-
-  # FIX: Corrected key typo from "Value" to "Role" to map smoothly with AZ1 structures
-  tag {
-    key                 = "Role"
-    value               = "passive"
-    propagate_at_launch = true
-  }
-}
-
-# ==============================================================================
-# --- MONITORING & ALERTS ---
-# ==============================================================================
-
-resource "aws_sns_topic" "alerts" {
-  name = "sonarqube-alerts-topic"
-}
-
-resource "aws_sns_topic_subscription" "email_target" {
-  topic_arn = aws_sns_topic.alerts.arn
-  protocol  = "email"
-  endpoint  = "sunraw541@gmail.com"
-}
-
-resource "aws_cloudwatch_metric_alarm" "asg_az1_cpu" {
-  alarm_name          = "sonarqube-asg-az1-high-cpu"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/EC2"
-  period              = "120"
-  statistic           = "Average"
-  threshold           = "80"
-  alarm_description   = "Monitors average CPU load across ASG Pinned to AZ1"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.sonar_asg_az1.name
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "asg_az2_cpu" {
-  alarm_name          = "sonarqube-asg-az2-high-cpu"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/EC2"
-  period              = "120"
-  statistic           = "Average"
-  threshold           = "80"
-  alarm_description   = "Monitors average CPU load across ASG Pinned to AZ2"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.sonar_asg_az2.name
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "tg2_unhealthy" {
-  alarm_name          = "sonarqube-tg-az2-unhealthy-alarm"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "UnHealthyHostCount"
-  namespace           = "AWS/ApplicationELB"
-  period              = "60"
-  statistic           = "Average"
-  threshold           = "1"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    TargetGroup  = aws_lb_target_group.sonar_tg_az2.arn_suffix
-    LoadBalancer = aws_lb.sonar_alb.arn_suffix
   }
 }
