@@ -53,7 +53,7 @@ resource "aws_eip" "nat" {
 
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id # Placed strictly in the first public subnet
+  subnet_id     = aws_subnet.public[0].id
 
   tags = {
     Name = "sonarqube-single-nat-gw"
@@ -77,7 +77,6 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Both private subnets share this single private route table pointing to our single NAT Gateway
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
@@ -144,14 +143,4 @@ resource "aws_instance" "bastion" {
     Name = "Bastion Host"
     Role = "Bastion-Jump-Box"
   }
-} # <--- MAKE SURE THIS CLOSING BRACE IS HERE!
-
-# ==============================================================================
-# --- OUTPUT VALUES FOR JENKINS PIPELINE ---
-# ==============================================================================
-
-output "bastion_public_ip" {
-  value       = aws_instance.bastion.public_ip
-  description = "The public IP of the Bastion Jump Box used by Jenkins/Ansible"
-} # <--- AND THIS CLOSING BRACE TO FINISH THE OUTPUTn = "The public IP of the Bastion Jump Box used by Jenkins/Ansible"
 }
