@@ -24,15 +24,24 @@ pipeline {
         stage('Execute Commands via Bastion') {
             steps {
                 script {
-                    echo "Waiting 30 seconds for instances to initialize SSH..."
-                    sleep 30
+                    echo "Waiting 60 seconds for ASG instances to register and initialize..."
+                    sleep 60
 
                     // Fetch live IPs from Terraform & AWS CLI
                     def bastionIp = sh(script: "terraform output -raw bastion_private_ip", returnStdout: true).trim()
                     def targetIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:Name,Values=sonarqube-asg-node' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text | head -n 1", returnStdout: true).trim()
 
-                    if (!bastionIp || !targetIp) {
-                        error "Could not retrieve dynamic IPs from AWS/Terraform."
+                    // DEBUG LOGS - This tells us exactly what went wrong
+                    echo "--- DEBUG IP DISCOVERY ---"
+                    echo "Discovered Bastion IP: '${bastionIp}'"
+                    echo "Discovered Target IP:  '${targetIp}'"
+                    echo "--------------------------"
+
+                    if (!bastionIp) {
+                        error "FAIL: 'bastion_private_ip' is blank. Check if your main terraform code matches the resource named 'aws_instance.bastion'."
+                    }
+                    if (!targetIp) {
+                        error "FAIL: No running EC2 instance found with tag Name='sonarqube-asg-node'. The ASG might still be spinning it up, or the tag name is different."
                     }
 
                     echo "Connecting via Bastion (${bastionIp}) to Sonar Target Node (${targetIp})..."
