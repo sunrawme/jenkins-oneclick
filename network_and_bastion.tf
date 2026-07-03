@@ -111,6 +111,7 @@ resource "aws_security_group" "bastion_sg" {
   description = "Control traffic moving through the public jump box"
   vpc_id      = aws_vpc.main.id
 
+  # --- This rule allows Jenkins/Ansible to connect without a connection refused error ---
   ingress {
     description = "SSH from anywhere"
     from_port   = 22
@@ -131,7 +132,6 @@ resource "aws_security_group" "bastion_sg" {
     Name = "bastion-security-group"
   }
 }
-
 resource "aws_instance" "bastion" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "m7i-flex.large"
