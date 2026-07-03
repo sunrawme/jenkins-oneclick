@@ -1,4 +1,9 @@
-output "bastion_public_ip" {
-  value       = aws_instance.bastion.public_ip
-  description = "The public IP of the Bastion Jump Box used by Jenkins/Ansible"
+output "bastion_private_ip" {
+  description = "The private IP address of the Bastion host"
+  value       = aws_instance.bastion.private_ip
+}
+
+output "sonar_node_ips" {
+  description = "Note: Nodes are managed by ASG, their private IPs can be fetched via AWS CLI if needed"
+  value       = "Dynamic via ASG"
 }
