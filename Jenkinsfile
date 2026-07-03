@@ -14,50 +14,41 @@ pipeline {
             }
         }
 
-        stage('Terraform Apply') { 
-            steps { 
+        stage('Terraform Apply') {
+            steps {
+                // This is your existing apply stage
                 sh 'terraform init -reconfigure'
-                sh 'terraform apply -auto-approve' 
-            } 
+                sh 'terraform apply -auto-approve'
+            }
         }
 
-        stage('Generate Ansible Inventory') {
+        stage('Execute Commands via Bastion') {
             steps {
                 script {
-                    def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
-                    echo "Discovered Bastion IP: ${bastionIp}"
+                    // 1. Wait a moment for the EC2 instances to fully boot up and start SSH
+                    echo "Waiting 30 seconds for instances to initialize SSH..."
+                    sleep 30
 
-                    // --- NEW FIX: Wait up to 2 minutes for Bastion SSH to wake up ---
-                    echo "Checking if Bastion SSH is ready..."
-                    def sshReady = false
-                    for (int i = 0; i < 6; i++) {
-                        def exitCode = sh(script: "nc -z -w 5 ${bastionIp} 22", returnStatus: true)
-                        if (exitCode == 0) {
-                            echo "Bastion SSH is up and listening!"
-                            sshReady = true
-                            break
-                        }
-                        echo "Bastion SSH not ready yet (port 22 refused). Waiting 20 seconds..."
-                        sleep 20
+                    // 2. Fetch the live private IP of the Bastion host dynamically
+                    def bastionIp = sh(script: "terraform output -raw bastion_private_ip", returnStdout: true).trim()
+                    
+                    // 3. Discover the dynamic private IP of the running SonarQube ASG node
+                    def targetIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:Name,Values=sonarqube-asg-node' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text | head -n 1", returnStdout: true).trim()
+
+                    if (!bastionIp || !targetIp) {
+                        error "Could not retrieve dynamic IPs from AWS/Terraform."
                     }
 
-                    if (!sshReady) {
-                        error "Bastion Host failed to start SSH on port 22 within 2 minutes."
+                    echo "Connecting via Bastion (${bastionIp}) to Sonar Target Node (${targetIp})..."
+
+                    // 4. Run the SSH script using your credential environment variables
+                    withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
+                        sh """
+                        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${BASTION_KEY} \
+                            -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${BASTION_KEY} -W %h:%p ubuntu@${bastionIp}" \
+                            ubuntu@${targetIp} "echo '=== Current Directory Structure ===' && ls -la /opt/sonarqube || echo 'Sonar directory completely missing.' && echo '=== Port Check ===' && sudo ss -tuln | grep 9000 || echo 'Nothing listening.'"
+                        """
                     }
-
-                    // Query live private node IPs
-                    def activeIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
-                    def passiveIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az2' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
-
-                    echo "Discovered Live Node IPs -> Active: ${activeIp}, Passive: ${passiveIp}"
-
-                    def template = readFile('ansible/inventory.ini.tpl')
-                    def inventoryContent = template
-                        .replace('\${bastion_ip}', bastionIp)
-                        .replace('\${active_ip}', activeIp)
-                        .replace('\${passive_ip}', passiveIp)
-
-                    writeFile(file: 'ansible/inventory.ini', text: inventoryContent)
                 }
             }
         }
