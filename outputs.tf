@@ -1,5 +1,5 @@
 output "bastion_private_ip" {
-  description = "The private IP address of the Bastion host"
+  description = "The private IP address of the Bastion host jump-box"
   value       = aws_instance.bastion.private_ip
 }
 
