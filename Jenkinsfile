@@ -29,12 +29,11 @@ pipeline {
                     // 1. Fetch Bastion IP
                     def bastionIp = sh(script: "terraform output -raw bastion_private_ip", returnStdout: true).trim()
 
-                    // 2. Query AWS CLI using a broader filter (looks for 'sonar' anywhere in the Name tag)
-                    // Also allows both 'running' and 'pending' states while it finishes booting.
+                    // 2. Fallback Query: Get ALL running/pending instances, then filter out the Bastion IP
                     def targetIp = sh(script: """
                         aws ec2 describe-instances \
-                            --filters "Name=tag:Name,Values=*sonar*" "Name=instance-state-name,Values=running,pending" \
-                            --query "Reservations[*].Instances[*].PrivateIpAddress" \
+                            --filters "Name=instance-state-name,Values=running,pending" \
+                            --query "Reservations[*].Instances[?PrivateIpAddress!='${bastionIp}'].PrivateIpAddress" \
                             --output text | head -n 1
                     """, returnStdout: true).trim()
 
@@ -46,11 +45,10 @@ pipeline {
                     if (!bastionIp) {
                         error "FAIL: 'bastion_private_ip' is blank. Check your outputs.tf file."
                     }
-                    if (!targetIp || targetIp == "None") {
-                        error "FAIL: No EC2 instances found matching '*sonar*' tags in running or pending states. Please verify your EC2 instance tags in your Terraform code."
+                    if (!targetIp || targetIp == "None" || targetIp.trim() == "") {
+                        error "FAIL: Absolutely no other EC2 instances found in this region besides the Bastion host. Your ASG may be failing to launch instances. Check AWS Console scaling history."
                     }
 
-                    // 3. Now that we have the IP, wait for it to finish booting up before running SSH
                     echo "Instance found at ${targetIp}. Waiting 45 seconds for SSH daemon to fully start..."
                     sleep 45
 
