@@ -24,24 +24,33 @@ pipeline {
         stage('Generate Ansible Inventory') {
             steps {
                 script {
-                    // 1. Extract Terraform outputs cleanly
                     def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
+                    echo "Discovered Bastion IP: ${bastionIp}"
 
-                    // 2. Query AWS CLI dynamically to fetch the live Private IPs from our two isolated ASGs
+                    // --- NEW FIX: Wait up to 2 minutes for Bastion SSH to wake up ---
+                    echo "Checking if Bastion SSH is ready..."
+                    def sshReady = false
+                    for (int i = 0; i < 6; i++) {
+                        def exitCode = sh(script: "nc -z -w 5 ${bastionIp} 22", returnStatus: true)
+                        if (exitCode == 0) {
+                            echo "Bastion SSH is up and listening!"
+                            sshReady = true
+                            break
+                        }
+                        echo "Bastion SSH not ready yet (port 22 refused). Waiting 20 seconds..."
+                        sleep 20
+                    }
+
+                    if (!sshReady) {
+                        error "Bastion Host failed to start SSH on port 22 within 2 minutes."
+                    }
+
+                    // Query live private node IPs
                     def activeIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
                     def passiveIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az2' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
 
-                    // Fallback to avoid empty strings if the ASG is still spawning the instance
-                    if (!activeIp || !passiveIp) {
-                        echo "Waiting 30 seconds for ASG instances to register IP addresses..."
-                        sleep 30
-                        activeIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
-                        passiveIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az2' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text", returnStdout: true).trim()
-                    }
-
                     echo "Discovered Live Node IPs -> Active: ${activeIp}, Passive: ${passiveIp}"
 
-                    // 3. Read template and map variables cleanly
                     def template = readFile('ansible/inventory.ini.tpl')
                     def inventoryContent = template
                         .replace('\${bastion_ip}', bastionIp)
@@ -52,7 +61,6 @@ pipeline {
                 }
             }
         }
-
         stage('Ansible Playbook Execution') {
             steps {
                 sleep 10 
