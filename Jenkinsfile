@@ -41,7 +41,7 @@ pipeline {
 
                     echo "Discovered Live Node IPs -> Active: ${activeIp}, Passive: ${passiveIp}"
 
-                    // 3. Read template and map variables cleanly (EFS mapping removed)
+                    // 3. Read template and map variables cleanly
                     def template = readFile('ansible/inventory.ini.tpl')
                     def inventoryContent = template
                         .replace('\${bastion_ip}', bastionIp)
@@ -59,6 +59,9 @@ pipeline {
                 sleep 60 
                 dir('ansible') {
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
+                        // --- INTEGRATED FIX: Force strict read-only permissions on the Jenkins-managed key file ---
+                        sh "chmod 400 \$KEY_FILE"
+                        
                         // Ansible routes over the proxy jump block built into the inventory
                         sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
                     }
