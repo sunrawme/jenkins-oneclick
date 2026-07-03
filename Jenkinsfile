@@ -24,7 +24,6 @@ pipeline {
         stage('Execute Commands via Bastion') {
             steps {
                 script {
-                    // FIX: Fetch the actual IP so ${bastionIp} isn't empty/undefined
                     def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
 
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
