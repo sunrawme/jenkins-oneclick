@@ -26,6 +26,33 @@ data "aws_ami" "ubuntu" {
 # --- APPLICATION SECURITY GROUPS ---
 # ==============================================================================
 
+resource "aws_security_group" "bastion_sg" {
+  name        = "bastion-security-group"
+  description = "Security Group for Bastion Host"
+  vpc_id      = aws_vpc.main.id
+
+  # --- FIX: Explicitly allow inbound SSH so the proxy connection isn't refused ---
+  ingress {
+    description = "Allow Inbound SSH from Jenkins or Everywhere"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # For tighter security, replace with your specific Jenkins Agent IP
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "bastion-sg"
+  }
+}
+
 resource "aws_security_group" "alb_sg" {
   name   = "alb-security-group"
   vpc_id = aws_vpc.main.id
@@ -72,7 +99,6 @@ resource "aws_security_group" "ec2_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
-
 # ==============================================================================
 # --- LOAD BALANCING & TARGET GROUPS ---
 # ==============================================================================
