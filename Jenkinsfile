@@ -21,7 +21,7 @@ pipeline {
             }
         }
 
-        stage('Execute Commands via Bastion') {
+       stage('Execute Commands via Bastion') {
             steps {
                 script {
                     echo "Fetching dynamic IPs from Terraform and AWS..."
@@ -44,8 +44,8 @@ pipeline {
                     }
 
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
-                        // Using safe shell environment variables to protect the secret and prevent warnings
-                        sh "code" : ' \
+                        // Securely combine the script string with our dynamic environment IPs
+                        sh ' \
                             echo "Testing connectivity to Bastion host..." ; \
                             for i in {1..6}; do \
                                 echo "Connection attempt $i/6..." ; \
@@ -62,7 +62,7 @@ pipeline {
                             echo "Executing remote diagnostics on SonarQube node via Bastion..." ; \
                             ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $BASTION_KEY \
                                 -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $BASTION_KEY -W %h:%p ubuntu@' + bastionIp + '" \
-                                ubuntu@' + targetIp + ' "echo \\"=== Current Directory Structure ===\\" && ls -la /opt/sonarqube || echo \\"Sonar directory completely missing.\\" && echo \\"=== Port Check ===\\" && sudo ss -tuln | grep 9000 || echo \\"Nothing listening.\\"" \
+                                ubuntu@' + targetIp + ' "echo \'=== Current Directory Structure ===\' && ls -la /opt/sonarqube || echo \'Sonar directory completely missing.\' && echo \'=== Port Check ===\' && sudo ss -tuln | grep 9000 || echo \'Nothing listening.\'" \
                         '
                     }
                 }
