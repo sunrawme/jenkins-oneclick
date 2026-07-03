@@ -26,33 +26,6 @@ data "aws_ami" "ubuntu" {
 # --- APPLICATION SECURITY GROUPS ---
 # ==============================================================================
 
-resource "aws_security_group" "bastion_sg" {
-  name        = "bastion-security-group"
-  description = "Security Group for Bastion Host"
-  vpc_id      = aws_vpc.main.id
-
-  # --- FIX: Explicitly allow inbound SSH so the proxy connection isn't refused ---
-  ingress {
-    description = "Allow Inbound SSH from Jenkins or Everywhere"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # For tighter security, replace with your specific Jenkins Agent IP
-  }
-
-  egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "bastion-sg"
-  }
-}
-
 resource "aws_security_group" "alb_sg" {
   name   = "alb-security-group"
   vpc_id = aws_vpc.main.id
@@ -99,6 +72,7 @@ resource "aws_security_group" "ec2_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
 # ==============================================================================
 # --- LOAD BALANCING & TARGET GROUPS ---
 # ==============================================================================
@@ -196,14 +170,11 @@ resource "aws_launch_template" "sonar_lt" {
   instance_type = "m7i-flex.large" 
   key_name      = "jenkins-ssh-key"
 
-  # --- FIX: Removed the non-existent iam_instance_profile section ---
-
   network_interfaces {
     associate_public_ip_address = false
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  # --- FIX: Removed SSM installation steps from user_data ---
   user_data = base64encode(<<-EOF
               #!/bin/bash
               echo "Initializing core node OS settings..."
