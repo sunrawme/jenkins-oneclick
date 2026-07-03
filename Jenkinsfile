@@ -55,15 +55,14 @@ pipeline {
 
         stage('Ansible Playbook Execution') {
             steps {
-                // Give the co-located database and OS processes a small moment to stabilize
-                sleep 60 
+                sleep 10 
                 dir('ansible') {
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
-                        // --- INTEGRATED FIX: Force strict read-only permissions on the Jenkins-managed key file ---
                         sh "chmod 400 \$KEY_FILE"
                         
-                        // Ansible routes over the proxy jump block built into the inventory
-                        sh 'ansible-playbook -i inventory.ini setup_sonarqube.yml --private-key=$KEY_FILE'
+                        echo "=== TRACING INSTANCE 10.0.3.242 VIA BASTION JUMP ==="
+                        // This uses your temporary Jenkins key to reach right into the private layer
+                        sh 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $KEY_FILE -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $KEY_FILE -W %h:%p ubuntu@10.0.1.234" ubuntu@10.0.3.242 "echo \\"=== Current Directory Structure ===\\" && ls -la /opt/sonarqube || echo \\"Sonar directory completely missing.\\" && echo \\"=== Port Check ===\\" && sudo ss -tuln | grep 9000 || echo \\"Nothing listening.\\""'
                     }
                 }
             }
