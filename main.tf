@@ -170,20 +170,17 @@ resource "aws_launch_template" "sonar_lt" {
   instance_type = "m7i-flex.large" 
   key_name      = "jenkins-ssh-key"
 
-  iam_instance_profile {
-    name = aws_iam_instance_profile.ec2_ssm_profile.name
-  }
+  # --- FIX: Removed the non-existent iam_instance_profile section ---
 
   network_interfaces {
     associate_public_ip_address = false
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
+  # --- FIX: Removed SSM installation steps from user_data ---
   user_data = base64encode(<<-EOF
               #!/bin/bash
-              snap wait system seed.loaded
-              systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-              systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+              echo "Initializing core node OS settings..."
               EOF
   )
 
@@ -315,4 +312,3 @@ resource "aws_cloudwatch_metric_alarm" "tg2_unhealthy" {
     LoadBalancer = aws_lb.sonar_alb.arn_suffix
   }
 }
-
