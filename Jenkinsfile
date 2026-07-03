@@ -24,25 +24,35 @@ pipeline {
         stage('Execute Commands via Bastion') {
             steps {
                 script {
-                    echo "Waiting 60 seconds for ASG instances to register and initialize..."
-                    sleep 60
+                    echo "Fetching dynamic IPs from Terraform and AWS..."
 
-                    // Fetch live IPs from Terraform & AWS CLI
+                    // 1. Fetch Bastion IP
                     def bastionIp = sh(script: "terraform output -raw bastion_private_ip", returnStdout: true).trim()
-                    def targetIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:Name,Values=sonarqube-asg-node' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text | head -n 1", returnStdout: true).trim()
 
-                    // DEBUG LOGS - This tells us exactly what went wrong
+                    // 2. Query AWS CLI using a broader filter (looks for 'sonar' anywhere in the Name tag)
+                    // Also allows both 'running' and 'pending' states while it finishes booting.
+                    def targetIp = sh(script: """
+                        aws ec2 describe-instances \
+                            --filters "Name=tag:Name,Values=*sonar*" "Name=instance-state-name,Values=running,pending" \
+                            --query "Reservations[*].Instances[*].PrivateIpAddress" \
+                            --output text | head -n 1
+                    """, returnStdout: true).trim()
+
                     echo "--- DEBUG IP DISCOVERY ---"
                     echo "Discovered Bastion IP: '${bastionIp}'"
                     echo "Discovered Target IP:  '${targetIp}'"
                     echo "--------------------------"
 
                     if (!bastionIp) {
-                        error "FAIL: 'bastion_private_ip' is blank. Check if your main terraform code matches the resource named 'aws_instance.bastion'."
+                        error "FAIL: 'bastion_private_ip' is blank. Check your outputs.tf file."
                     }
-                    if (!targetIp) {
-                        error "FAIL: No running EC2 instance found with tag Name='sonarqube-asg-node'. The ASG might still be spinning it up, or the tag name is different."
+                    if (!targetIp || targetIp == "None") {
+                        error "FAIL: No EC2 instances found matching '*sonar*' tags in running or pending states. Please verify your EC2 instance tags in your Terraform code."
                     }
+
+                    // 3. Now that we have the IP, wait for it to finish booting up before running SSH
+                    echo "Instance found at ${targetIp}. Waiting 45 seconds for SSH daemon to fully start..."
+                    sleep 45
 
                     echo "Connecting via Bastion (${bastionIp}) to Sonar Target Node (${targetIp})..."
 
