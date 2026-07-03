@@ -81,9 +81,13 @@ resource "aws_security_group" "bastion_sg" {
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = "t3.micro"
+  
+  # Ensure it is explicitly placed in the public subnet
   subnet_id                   = aws_subnet.public[0].id
   vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
   key_name                    = "jenkins-ssh-key"
+  
+  # FORCE AWS to allocate a real, public internet routable IP
   associate_public_ip_address = true
 
   tags = { Name = "bastion-host" }
