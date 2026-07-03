@@ -44,9 +44,9 @@ pipeline {
                     }
 
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
-                        // Securely combine the script string with our dynamic environment IPs
-                        sh ' \
-                            echo "Testing connectivity to Bastion host..." ; \
+                        // Adding the #!/bin/bash shebang ensures the loop handles flawlessly in Jenkins
+                        sh '#!/bin/bash\n' + \
+                           'echo "Testing connectivity to Bastion host..." ; \
                             for i in {1..6}; do \
                                 echo "Connection attempt $i/6..." ; \
                                 if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i $BASTION_KEY ubuntu@' + bastionIp + ' exit 2>&1 | grep -q "Permission denied"; then \
@@ -57,6 +57,7 @@ pipeline {
                                     echo "Please check that your Bastion Security Group allows port 22 from this Jenkins agent." ; \
                                     exit 255 ; \
                                 fi ; \
+                                echo "Connection refused. Waiting 15 seconds to retry..." ; \
                                 sleep 15 ; \
                             done ; \
                             echo "Executing remote diagnostics on SonarQube node via Bastion..." ; \
