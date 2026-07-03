@@ -31,8 +31,7 @@ pipeline {
                         chmod 400 \$BASTION_KEY
                         echo "Testing absolute SSH access to Bastion host at ${bastionIp}..."
                         for i in {1..10}; do
-                            echo "Connection attempt \text{\${i}}/10..."
-                            # FIX: Properly check for a true successful connection (exit status 0)
+                            echo "Connection attempt \${i}/10..."
                             if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i \$BASTION_KEY ubuntu@${bastionIp} "echo 'SSH_ALIVE'" 2>&1 | grep -q "SSH_ALIVE"; then
                                 echo "Success: Bastion fully authenticated and operational!"
                                 break
@@ -47,7 +46,6 @@ pipeline {
                 }
             }
         }
-
         stage('Ansible Playbook Execution') {
             steps {
                 script {
