@@ -51,11 +51,11 @@ pipeline {
         stage('Ansible Playbook Execution') {
             steps {
                 script {
-                    dir('ansible') {
-                        // Fetch the same live dynamic IPs for this stage as well
-                        def bastionIp = sh(script: "terraform output -raw bastion_private_ip", returnStdout: true).trim()
-                        def targetIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:Name,Values=sonarqube-asg-node' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text | head -n 1", returnStdout: true).trim()
+                    // Fetch IPs from the root directory before stepping inside the ansible folder
+                    def bastionIp = sh(script: "terraform output -raw bastion_private_ip", returnStdout: true).trim()
+                    def targetIp = sh(script: "aws ec2 describe-instances --filters 'Name=tag:Name,Values=sonarqube-asg-node' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text | head -n 1", returnStdout: true).trim()
 
+                    dir('ansible') {
                         withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
                             sh "chmod 400 \$KEY_FILE"
                             
