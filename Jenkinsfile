@@ -26,10 +26,7 @@ pipeline {
                 script {
                     echo "Fetching dynamic IPs from Terraform and AWS..."
 
-                    // 1. Fetch Bastion IP
                     def bastionIp = sh(script: "terraform output -raw bastion_private_ip", returnStdout: true).trim()
-
-                    // 2. Fallback Query: Get ALL running/pending instances, then filter out the Bastion IP
                     def targetIp = sh(script: """
                         aws ec2 describe-instances \
                             --filters "Name=instance-state-name,Values=running,pending" \
@@ -37,34 +34,43 @@ pipeline {
                             --output text | head -n 1
                     """, returnStdout: true).trim()
 
-                    echo "--- DEBUG IP DISCOVERY ---"
-                    echo "Discovered Bastion IP: '${bastionIp}'"
-                    echo "Discovered Target IP:  '${targetIp}'"
-                    echo "--------------------------"
+                    echo "--- LIVE IP PATH ---"
+                    echo "Bastion Host IP: ${bastionIp}"
+                    echo "Target Node IP:  ${targetIp}"
+                    echo "--------------------"
 
-                    if (!bastionIp) {
-                        error "FAIL: 'bastion_private_ip' is blank. Check your outputs.tf file."
-                    }
-                    if (!targetIp || targetIp == "None" || targetIp.trim() == "") {
-                        error "FAIL: Absolutely no other EC2 instances found in this region besides the Bastion host. Your ASG may be failing to launch instances. Check AWS Console scaling history."
+                    if (!bastionIp || !targetIp) {
+                        error "Could not resolve network topology IPs."
                     }
 
-                    echo "Instance found at ${targetIp}. Waiting 45 seconds for SSH daemon to fully start..."
-                    sleep 45
-
-                    echo "Connecting via Bastion (${bastionIp}) to Sonar Target Node (${targetIp})..."
-
+                    // Securely bind the key and execute with an explicit retry loop
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
-                        sh """
-                        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${BASTION_KEY} \
-                            -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${BASTION_KEY} -W %h:%p ubuntu@${bastionIp}" \
-                            ubuntu@${targetIp} "echo '=== Current Directory Structure ===' && ls -la /opt/sonarqube || echo 'Sonar directory completely missing.' && echo '=== Port Check ===' && sudo ss -tuln | grep 9000 || echo 'Nothing listening.'"
-                        """
+                        // Using single quotes ('''') prevents Groovy interpolation warnings 
+                        // and forces Jenkins to handle the key securely via shell environment variables
+                        sh ''',
+                            echo "Testing connectivity to Bastion host..."
+                            for i in {1..6}; do
+                                echo "Connection attempt $i/6..."
+                                if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i $BASTION_KEY ubuntu@''' + bastionIp + ''' exit 2>&1 | grep -q "Permission denied"; then
+                                    echo "Success: Bastion SSH port is open and accepting keys!"
+                                    break
+                                elif [ $i -eq 6 ]; then
+                                    echo "FAIL: Bastion host continuously refused connection on port 22."
+                                    echo "Please check that your Bastion Security Group allows port 22 from this Jenkins agent."
+                                    exit 255
+                                fi
+                                sleep 15
+                            done
+
+                            echo "Executing remote diagnostics on SonarQube node via Bastion..."
+                            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $BASTION_KEY \
+                                -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $BASTION_KEY -W %h:%p ubuntu@''' + bastionIp + '''" \
+                                ubuntu@''' + targetIp + ''' "echo '=== Current Directory Structure ===' && ls -la /opt/sonarqube || echo 'Sonar directory completely missing.' && echo '=== Port Check ===' && sudo ss -tuln | grep 9000 || echo 'Nothing listening.'"
+                        '''
                     }
                 }
             }
         }
-
         stage('Ansible Playbook Execution') {
             steps {
                 script {
