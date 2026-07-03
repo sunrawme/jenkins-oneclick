@@ -38,9 +38,11 @@ data "aws_availability_zones" "available" {
 }
 
 # FIX: Added Public Route Table pointing 0.0.0.0/0 to the Internet Gateway
+# --- PUBLIC ROUTE TABLE ---
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.main.id
 
+  # This block was either empty or missing an explicit route declaration matching the IGW
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.gw.id
@@ -49,7 +51,7 @@ resource "aws_route_table" "public_rt" {
   tags = { Name = "sonarqube-public-rt" }
 }
 
-# FIX: Associated the Public Subnets with the Public Route Table
+# --- PUBLIC ROUTE TABLE ASSOCIATION ---
 resource "aws_route_table_association" "public_assoc" {
   count          = 2
   subnet_id      = aws_subnet.public[count.index].id
