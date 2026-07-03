@@ -26,6 +26,32 @@ data "aws_ami" "ubuntu" {
 # --- APPLICATION SECURITY GROUPS ---
 # ==============================================================================
 
+# FIX: Added the missing Bastion Security Group that your EC2 Security Group relies on
+resource "aws_security_group" "bastion_sg" {
+  name        = "bastion-security-group"
+  description = "Allow SSH to Bastion host"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "SSH from everywhere"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # Change this to your Jenkins Agent IP for production hardened setups
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "bastion-security-group"
+  }
+}
+
 resource "aws_security_group" "alb_sg" {
   name   = "alb-security-group"
   vpc_id = aws_vpc.main.id
@@ -71,6 +97,30 @@ resource "aws_security_group" "ec2_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+# ==============================================================================
+# --- BASTION INSTANCE ---
+# ==============================================================================
+
+# FIX: Added the missing Bastion EC2 host so Jenkins has an endpoint to proxy through
+resource "aws_instance" "bastion" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t3.micro"
+  subnet_id                   = aws_subnet.public[0].id # Placed in public subnet to receive traffic
+  vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
+  key_name                    = "jenkins-ssh-key"
+  associate_public_ip_address = true
+
+  tags = {
+    Name = "bastion-host"
+  }
+}
+
+# FIX: Added the output variable expected by your Jenkinsfile pipeline script
+output "bastion_private_ip" {
+  value       = aws_instance.bastion.private_ip
+  description = "The private IP address of the Bastion host"
 }
 
 # ==============================================================================
@@ -206,9 +256,10 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
     version = "$Latest"
   }
 
+  # FIX: Adjusted tag values to keep a uniform naming layout that matches your search filter pattern
   tag {
     key                 = "Name"
-    value               = "SonarQube-01 (co-located DB)"
+    value               = "sonarqube-asg-node-01"
     propagate_at_launch = true
   }
 
@@ -232,14 +283,16 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
     version = "$Latest"
   }
 
+  # FIX: Adjusted tag values to keep a uniform naming layout that matches your search filter pattern
   tag {
     key                 = "Name"
-    value               = "SonarQube-02 (co-located DB)"
+    value               = "sonarqube-asg-node-02"
     propagate_at_launch = true
   }
 
+  # FIX: Corrected key typo from "Value" to "Role" to map smoothly with AZ1 structures
   tag {
-    key                 = "Value"
+    key                 = "Role"
     value               = "passive"
     propagate_at_launch = true
   }
