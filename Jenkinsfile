@@ -28,14 +28,16 @@ pipeline {
 
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
                         sh """#!/bin/bash
-                        echo "Testing connectivity to Bastion host at ${bastionIp}..."
+                        chmod 400 \$BASTION_KEY
+                        echo "Testing absolute SSH access to Bastion host at ${bastionIp}..."
                         for i in {1..10}; do
-                            echo "Connection attempt \${i}/10..."
-                            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i \$BASTION_KEY ubuntu@${bastionIp} exit 2>&1 | grep -q "Permission denied"; then
-                                echo "Success: Bastion SSH port is open and accepting keys!"
+                            echo "Connection attempt \text{\${i}}/10..."
+                            # FIX: Properly check for a true successful connection (exit status 0)
+                            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i \$BASTION_KEY ubuntu@${bastionIp} "echo 'SSH_ALIVE'" 2>&1 | grep -q "SSH_ALIVE"; then
+                                echo "Success: Bastion fully authenticated and operational!"
                                 break
                             elif [ \${i} -eq 10 ]; then
-                                echo "FAIL: Bastion connection dropped."
+                                echo "FAIL: Authenticated connection could not be established. Check your Jenkins SSH credentials key alignment."
                                 exit 255
                             fi
                             sleep 15
@@ -54,12 +56,14 @@ pipeline {
 
                     dir('ansible') {
                         withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'KEY_FILE')]) {
-                            sh "chmod 400 \$KEY_FILE"
-                            sh '#!/bin/bash\n' + \
-                               'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $KEY_FILE \
-                                -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $KEY_FILE -W %h:%p ubuntu@' + bastionIp + '" \
-                                ubuntu@' + targetIp + ' "echo \'=== Current Directory Structure ===\' && ls -la /opt/sonarqube || echo \'Sonar directory completely missing.\'" \
-                               '
+                            // FIX: Cleaned syntax utilizing triple-quotes to prevent proxy environment truncation issues
+                            sh """#!/bin/bash
+                            chmod 400 \$KEY_FILE
+                            echo "Routing secure tunnel through Bastion (${bastionIp}) to Target Private IP (${targetIp})..."
+                            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \$KEY_FILE \
+                                -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \$KEY_FILE -W %h:%p ubuntu@${bastionIp}" \
+                                ubuntu@${targetIp} "echo '=== Current Directory Structure ===' && ls -la /opt/sonarqube || echo 'Sonar directory completely missing.'"
+                            """
                         }
                     }
                 }
