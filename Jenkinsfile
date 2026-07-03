@@ -43,30 +43,27 @@ pipeline {
                         error "Could not resolve network topology IPs."
                     }
 
-                    // Securely bind the key and execute with an explicit retry loop
                     withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
-                        // Using single quotes ('''') prevents Groovy interpolation warnings 
-                        // and forces Jenkins to handle the key securely via shell environment variables
-                        sh ''',
-                            echo "Testing connectivity to Bastion host..."
-                            for i in {1..6}; do
-                                echo "Connection attempt $i/6..."
-                                if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i $BASTION_KEY ubuntu@''' + bastionIp + ''' exit 2>&1 | grep -q "Permission denied"; then
-                                    echo "Success: Bastion SSH port is open and accepting keys!"
-                                    break
-                                elif [ $i -eq 6 ]; then
-                                    echo "FAIL: Bastion host continuously refused connection on port 22."
-                                    echo "Please check that your Bastion Security Group allows port 22 from this Jenkins agent."
-                                    exit 255
-                                fi
-                                sleep 15
-                            done
-
-                            echo "Executing remote diagnostics on SonarQube node via Bastion..."
+                        // Using safe shell environment variables to protect the secret and prevent warnings
+                        sh "code" : ' \
+                            echo "Testing connectivity to Bastion host..." ; \
+                            for i in {1..6}; do \
+                                echo "Connection attempt $i/6..." ; \
+                                if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i $BASTION_KEY ubuntu@' + bastionIp + ' exit 2>&1 | grep -q "Permission denied"; then \
+                                    echo "Success: Bastion SSH port is open and accepting keys!" ; \
+                                    break ; \
+                                elif [ $i -eq 6 ]; then \
+                                    echo "FAIL: Bastion host continuously refused connection on port 22." ; \
+                                    echo "Please check that your Bastion Security Group allows port 22 from this Jenkins agent." ; \
+                                    exit 255 ; \
+                                fi ; \
+                                sleep 15 ; \
+                            done ; \
+                            echo "Executing remote diagnostics on SonarQube node via Bastion..." ; \
                             ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $BASTION_KEY \
-                                -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $BASTION_KEY -W %h:%p ubuntu@''' + bastionIp + '''" \
-                                ubuntu@''' + targetIp + ''' "echo '=== Current Directory Structure ===' && ls -la /opt/sonarqube || echo 'Sonar directory completely missing.' && echo '=== Port Check ===' && sudo ss -tuln | grep 9000 || echo 'Nothing listening.'"
-                        '''
+                                -o ProxyCommand="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $BASTION_KEY -W %h:%p ubuntu@' + bastionIp + '" \
+                                ubuntu@' + targetIp + ' "echo \\"=== Current Directory Structure ===\\" && ls -la /opt/sonarqube || echo \\"Sonar directory completely missing.\\" && echo \\"=== Port Check ===\\" && sudo ss -tuln | grep 9000 || echo \\"Nothing listening.\\"" \
+                        '
                     }
                 }
             }
