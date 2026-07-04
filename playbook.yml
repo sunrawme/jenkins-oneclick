@@ -1,28 +1,29 @@
 ---
 - name: Configure High Availability SonarQube Nodes
-  hosts: all
+  hosts: sonarqube_nodes
   become: yes
-  vars:
-    # Passed dynamically from Jenkins/Terraform later
-    db_host: "REPLACE_WITH_DB_ENDPOINT"
   tasks:
     - name: 1. Set Kernel Optimization Parameters
       sysctl:
-        name: vm.max_map_count
-        value: '524288'
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
         state: present
         reload: yes
+      with_items:
+        - { name: 'vm.max_map_count', value: '524288' }
+        - { name: 'fs.file-max', value: '131072' }
 
     - name: 2. Install Docker Prerequisites
       apt:
-        name: [apt-transport-https, ca-certificates, curl, gnupg, lsb-release]
+        name: [apt-transport-https, ca-certificates, curl, gnupg, lsb-release, python3-pip]
         state: present
         update_cache: yes
 
     - name: 3. Setup Docker Keyring and Repo
       shell: |
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -y -o /usr/share/keyrings/docker-archive-keyring.gpg
-        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.data/docker.list > /dev/null
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
     - name: 4. Install Docker Engine
       apt:
@@ -36,26 +37,41 @@
         state: directory
         mode: '0755'
 
-    - name: 6. Template out Docker Compose Configuration
+    - name: 6. Template out Integrated Docker Compose Configuration
       copy:
         dest: /opt/sonar-ha-stack/docker-compose.yml
         content: |
           version: '3.8'
           services:
+            sonarqube-db:
+              image: postgres:14
+              container_name: sonarqube_db
+              environment:
+                - POSTGRES_USER=sonar
+                - POSTGRES_PASSWORD=SonarSecure2026!
+                - POSTGRES_DB=sonar
+              volumes:
+                - postgres_data:/var/lib/postgresql/data
+              ports:
+                - "5432:5432"
+
             sonarqube:
               image: sonarqube:10.4.1-community
               container_name: sonarqube_node
               ports:
                 - "9000:9000"
+              depends_on:
+                - sonarqube-db
               environment:
                 - SONAR_JDBC_USERNAME=sonar
                 - SONAR_JDBC_PASSWORD=SonarSecure2026!
-                - SONAR_JDBC_URL=jdbc:postgresql://{{ db_host }}/sonar
+                - SONAR_JDBC_URL=jdbc:postgresql://sonarqube-db:5432/sonar
               volumes:
                 - sonar_data:/opt/sonarqube/data
                 - sonar_extensions:/opt/sonarqube/extensions
                 - sonar_logs:/opt/sonarqube/logs
           volumes:
+            postgres_data:
             sonar_data:
             sonar_extensions:
             sonar_logs:
