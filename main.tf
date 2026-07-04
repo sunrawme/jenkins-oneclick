@@ -43,6 +43,15 @@ resource "aws_security_group" "ec2_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
+
+  ingress {
+    description     = "Inter-node cluster DB sync"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    self            = true # Allows nodes to talk to each other's databases if co-located
+  }
+
   ingress {
     description     = "SSH strictly from Bastion"
     from_port       = 22
@@ -50,6 +59,7 @@ resource "aws_security_group" "ec2_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.bastion_sg.id] 
   }
+
   egress {
     from_port   = 0
     to_port     = 0
