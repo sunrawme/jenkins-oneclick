@@ -113,12 +113,11 @@ resource "aws_security_group" "bastion_sg" {
 
 # --- BASTION EC2 INSTANCE (IN AZ-1 PUBLIC SUBNET) ---
 resource "aws_instance" "bastion" {
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = "t3.micro"
-  subnet_id                   = aws_subnet.public[0].id
-  vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
-  key_name                    = "jenkins-ssh-key"
-  associate_public_ip_address = true
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = "t3.micro"
+  key_name      = "sandeep-key" # <-- Updated here
+  # ... rest of your parameters
+}
 
   tags = { Name = "bastion-host" }
 }
