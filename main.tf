@@ -259,7 +259,7 @@ resource "aws_sns_topic" "sonar_alerts" {
 resource "aws_sns_topic_subscription" "email_sub" {
   topic_arn = aws_sns_topic.sonar_alerts.arn
   protocol  = "email"
-  endpoint  = "your-email@company.com" # <-- CHANGE THIS to your real email address
+  endpoint  = "sunraw541@gmail.com" # <-- CHANGE THIS to your real email address
 }
 
 # --- MONITORING ALARMS (CLOUDWATCH) ---
