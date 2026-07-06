@@ -16,7 +16,9 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                sh 'terraform init -reconfigure'
+                // Delete the cached backend configuration to force a clean slate
+                sh 'rm -rf .terraform'
+                sh 'terraform init'
                 sh 'terraform apply -auto-approve'
             }
         }
@@ -24,7 +26,7 @@ pipeline {
         stage('Teardown Approvals Gate') {
             steps {
                 script {
-                    input message: "Infrastructure is live matching your custom AMIs! Do you want to tear down?", ok: "Yes, Destroy It"
+                    input message: "Infrastructure is live! Do you want to tear down?", ok: "Yes, Destroy It"
                 }
             }
         }
