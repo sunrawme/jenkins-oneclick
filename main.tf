@@ -81,10 +81,15 @@ resource "aws_lb_target_group" "sonar_tg_az1" {
   vpc_id   = aws_vpc.main.id
   
   health_check {
-    path = "/api/system/status"
-    port = "9000"
+    path                = "/"
+    port                = "9000"
+    protocol            = "HTTP"
+    interval            = 30
+    timeout             = 10
+    healthy_threshold   = 2
+    unhealthy_threshold = 5
+    matcher             = "200-499" # Accepts standard web page, redirects, or setup screens
   }
-  # Removed target-level stickiness block to fix the AWS 400 validation error
 }
 
 resource "aws_lb_target_group" "sonar_tg_az2" {
@@ -94,12 +99,16 @@ resource "aws_lb_target_group" "sonar_tg_az2" {
   vpc_id   = aws_vpc.main.id
   
   health_check {
-    path = "/api/system/status"
-    port = "9000"
+    path                = "/"
+    port                = "9000"
+    protocol            = "HTTP"
+    interval            = 30
+    timeout             = 10
+    healthy_threshold   = 2
+    unhealthy_threshold = 5
+    matcher             = "200-499" 
   }
-  # Removed target-level stickiness block to fix the AWS 400 validation error
 }
-
 # --- ALB LISTENERS & HOST ROUTING RULES ---
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.sonar_alb.arn
