@@ -145,31 +145,26 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
 # --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
 resource "aws_launch_template" "sonar_lt_active" {
   name_prefix   = "sonarqube-active-template-"
-  image_id      = "ami-0fa7042ecfdecafcc" # From your sonar-active image
+  image_id      = "ami-0fa7042ecfdecafcc"
   instance_type = var.instance_type
-  key_name      = "jenkins-ssh-key"
+  key_name      = "sandeep-key" # <-- Updated here
 
   network_interfaces {
     associate_public_ip_address = false
     security_groups             = [aws_security_group.ec2_sg.id]
   }
-
-  user_data = base64encode("#!/bin/bash\necho 'Booting Active SonarQube Node...'")
 }
 
-# --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix   = "sonarqube-passive-template-"
-  image_id      = "ami-057e0f5a47ebc3a4d" # From your sonar-passive image
+  image_id      = "ami-057e0f5a47ebc3a4d"
   instance_type = var.instance_type
-  key_name      = "jenkins-ssh-key"
+  key_name      = "sandeep-key" # <-- Updated here
 
   network_interfaces {
     associate_public_ip_address = false
     security_groups             = [aws_security_group.ec2_sg.id]
   }
-
-  user_data = base64encode("#!/bin/bash\necho 'Booting Passive SonarQube Node...'")
 }
 
 # --- AUTO SCALING GROUPS ---
