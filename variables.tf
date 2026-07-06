@@ -14,9 +14,9 @@ variable "private_subnet_cidrs" {
 
 variable "availability_zones" {
   type    = list(string)
-  default = ["us-east-1a", "us-east-1b"]
+  default = ["ap-south-1a", "ap-south-1b"] # <-- Fix here
 }
 
 variable "instance_type" {
-  default = "m7i-flex.large"
+  default = "t3.medium" # Change to t3.medium or large based on Mumbai availability
 }
