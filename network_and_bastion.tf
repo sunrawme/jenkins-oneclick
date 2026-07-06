@@ -13,11 +13,11 @@ resource "aws_internet_gateway" "gw" {
   tags = { Name = "sonarqube-igw" }
 }
 
-# --- SUBNETS (MATCHING THE DIAGRAM CIDRs) ---
+# --- SUBNETS ---
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.${count.index + 1}.0/24" # 10.0.1.0/24 and 10.0.2.0/24
+  cidr_block              = "10.0.${count.index + 1}.0/24"
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
@@ -27,7 +27,7 @@ resource "aws_subnet" "public" {
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.${count.index + 3}.0/24" # 10.0.3.0/24 and 10.0.4.0/24
+  cidr_block        = "10.0.${count.index + 3}.0/24"
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = { Name = "sonarqube-private-subnet-az${count.index + 1}" }
@@ -55,7 +55,7 @@ resource "aws_route_table_association" "public_assoc" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-# --- NAT GATEWAY (PLACED IN AZ-1 PUBLIC SUBNET AS PER DIAGRAM) ---
+# --- NAT GATEWAY ---
 resource "aws_eip" "nat_eip" {
   domain     = "vpc"
   depends_on = [aws_internet_gateway.gw]
@@ -64,12 +64,12 @@ resource "aws_eip" "nat_eip" {
 
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat_eip.id
-  subnet_id     = aws_subnet.public[0].id # Pinned to 10.0.1.0/24 Public Subnet
+  subnet_id      = aws_subnet.public[0].id
 
   tags = { Name = "sonar-nat-gateway" }
 }
 
-# --- PRIVATE ROUTING (CONNECTING BOTH PRIVATE SUBNETS TO THE NAT GW) ---
+# --- PRIVATE ROUTING ---
 resource "aws_route_table" "private_rt" {
   vpc_id = aws_vpc.main.id
 
@@ -111,13 +111,13 @@ resource "aws_security_group" "bastion_sg" {
   tags = { Name = "bastion-sg" }
 }
 
-# --- BASTION EC2 INSTANCE (IN AZ-1 PUBLIC SUBNET) ---
+# --- BASTION EC2 INSTANCE ---
 resource "aws_instance" "bastion" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.micro"
-  key_name      = "sandeep-key" # <-- Updated here
-  # ... rest of your parameters
-}
+  key_name      = "sandeep-key"
+  subnet_id     = aws_subnet.public[0].id
+  vpc_security_group_ids = [aws_security_group.bastion_sg.id]
 
   tags = { Name = "bastion-host" }
 }
