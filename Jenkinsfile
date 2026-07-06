@@ -16,7 +16,6 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                # Force local state reconfiguration and state migration
                 sh 'terraform init -reconfigure -migrate-state'
                 sh 'terraform apply -auto-approve'
             }
@@ -36,8 +35,7 @@ pipeline {
             }
         }
     }
-}
-        stage('Ansible Playbook Execution') {
+}        stage('Ansible Playbook Execution') {
             steps {
                 script {
                     def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
