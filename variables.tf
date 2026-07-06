@@ -17,7 +17,7 @@ variable "availability_zones" {
   default = ["ap-south-1a", "ap-south-1b"] # <-- Fix here
 }
 
-variable "instance_type" {
+variable "sonar_instance_type" {
   type    = string
-  default = "t3.micro" # Or "t2.micro" depending on what your free tier permits
+  default = "m7i-flex.large"
 }
