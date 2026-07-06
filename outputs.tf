@@ -1,9 +1,4 @@
-output "sonar_active_url" {
-  value       = "http://${aws_instance.sonar_active.public_ip}:9000"
-  description = "Primary SonarQube Dashboard URL"
-}
-
-output "sonar_passive_url" {
-  value       = "http://${aws_instance.sonar_passive.public_ip}:9000"
-  description = "Standby SonarQube Dashboard URL"
+output "sonarqube_alb_url" {
+  value       = "http://${aws_lb.sonar_alb.dns_name}"
+  description = "The public web address to access your SonarQube dashboard load balancer."
 }
