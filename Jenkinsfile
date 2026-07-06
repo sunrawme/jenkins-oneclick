@@ -35,7 +35,9 @@ pipeline {
             }
         }
     }
-}        stage('Ansible Playbook Execution') {
+}     
+
+stage('Ansible Playbook Execution') {
             steps {
                 script {
                     def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
