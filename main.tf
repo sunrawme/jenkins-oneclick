@@ -118,6 +118,7 @@ resource "aws_lb_listener" "http" {
   port              = "80"
   protocol          = "HTTP"
   
+  # FIX: Added stickiness block to enable Group Stickiness alongside Weighted Target Groups
   default_action {
     type = "forward"
     forward {
@@ -128,6 +129,11 @@ resource "aws_lb_listener" "http" {
       target_group {
         arn    = aws_lb_target_group.sonar_tg_az2.arn
         weight = 50
+      }
+      
+      stickiness {
+        enabled  = true
+        duration = 86400
       }
     }
   }
