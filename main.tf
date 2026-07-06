@@ -88,7 +88,7 @@ resource "aws_lb_target_group" "sonar_tg_az1" {
     timeout             = 10
     healthy_threshold   = 2
     unhealthy_threshold = 5
-    matcher             = "200-499" # Accepts standard web page, redirects, or setup screens
+    matcher             = "200-499" 
   }
 }
 
@@ -109,6 +109,7 @@ resource "aws_lb_target_group" "sonar_tg_az2" {
     matcher             = "200-499" 
   }
 }
+
 # --- ALB LISTENERS & HOST ROUTING RULES ---
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.sonar_alb.arn
@@ -170,9 +171,9 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
 # --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
 resource "aws_launch_template" "sonar_lt_active" {
   name_prefix   = "sonarqube-active-template-"
-  image_id      = "ami-0fa7042ecfdecafcc"
+  image_id      = "ami-0fa7042ecfdecafcc" # Custom sonar-active-server image
   instance_type = var.instance_type
-  key_name      = "sandeep-key"
+  key_name      = "sonarkey" # Updated Key
 
   network_interfaces {
     associate_public_ip_address = false
@@ -181,28 +182,9 @@ resource "aws_launch_template" "sonar_lt_active" {
 
   user_data = base64encode(<<-EOF
 #!/bin/bash
-# 1. Allocate a 4GB swap file immediately
-fallocate -l 4G /swapfile
-chmod 600 /swapfile
-mkswap /swapfile
-swapon /swapfile
-echo '/swapfile none swap sw 0 0' >> /etc/fstab
-
-# 2. Configure system map requirements for Elasticsearch
-sysctl -w vm.max_map_count=524288
-echo 'vm.max_map_count=524288' >> /etc/sysctl.conf
-
-# 3. Inject optimized memory properties directly into config file
-cat << 'CONFIG_EOF' >> /opt/sonarqube/conf/sonar.properties
-
-# --- OPTIMIZED LOW PERFORMANCE CONFIG FOR T3.MICRO ---
-sonar.search.javaOpts=-Xms256m -Xmx256m -XX:+UseSerialGC
-sonar.web.javaOpts=-Xms128m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError
-sonar.ce.javaOpts=-Xms128m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError
-CONFIG_EOF
-
-# 4. Force restart the service to apply the micro configuration changes safely
+# 1. Start services and keep performance optimizations intact
 systemctl daemon-reload
+systemctl restart postgresql
 systemctl restart sonarqube
 EOF
   )
@@ -211,9 +193,14 @@ EOF
 # --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix   = "sonarqube-passive-template-"
-  image_id      = "ami-057e0f5a47ebc3a4d"
+  image_id      = "ami-057e0f5a47ebc3a4d" # Custom sonar-passive-server image
   instance_type = var.instance_type
-  key_name      = "sandeep-key"
+  key_name      = "sonarkey" # Updated Key
+
+  # Required to let AWS CLI scan for the active node's IP over AWS APIs
+  iam_instance_profile {
+    name = aws_iam_instance_profile.sonar_discovery_profile.name
+  }
 
   network_interfaces {
     associate_public_ip_address = false
@@ -222,31 +209,61 @@ resource "aws_launch_template" "sonar_lt_passive" {
 
   user_data = base64encode(<<-EOF
 #!/bin/bash
-# 1. Allocate a 4GB swap file immediately
-fallocate -l 4G /swapfile
-chmod 600 /swapfile
-mkswap /swapfile
-swapon /swapfile
-echo '/swapfile none swap sw 0 0' >> /etc/fstab
+# Install AWS CLI to run network resource queries if missing
+apt-get update && apt-get install awscli -y
 
-# 2. Configure system map requirements for Elasticsearch
-sysctl -w vm.max_map_count=524288
-echo 'vm.max_map_count=524288' >> /etc/sysctl.conf
+# 1. Fetch the active server's current internal IP address dynamically from EC2 tags
+ACTIVE_IP=""
+while [ -z "$ACTIVE_IP" ]; do
+  ACTIVE_IP=$(aws ec2 describe-instances --region ap-south-1 --filters "Name=tag:Name,Values=sonarqube-asg-node-01" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].PrivateIpAddress" --output text)
+  sleep 5
+done
 
-# 3. Inject optimized memory properties directly into config file
-cat << 'CONFIG_EOF' >> /opt/sonarqube/conf/sonar.properties
+# 2. Re-point the internal configuration file database connector to the discovered IP
+sed -i "s|jdbc:postgresql://.*:5432/sonarqube|jdbc:postgresql://$ACTIVE_IP:5432/sonarqube|g" /opt/sonarqube/conf/sonar.properties
 
-# --- OPTIMIZED LOW PERFORMANCE CONFIG FOR T3.MICRO ---
-sonar.search.javaOpts=-Xms256m -Xmx256m -XX:+UseSerialGC
-sonar.web.javaOpts=-Xms128m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError
-sonar.ce.javaOpts=-Xms128m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError
-CONFIG_EOF
-
-# 4. Force restart the service to apply the micro configuration changes safely
+# 3. Boot service
 systemctl daemon-reload
 systemctl restart sonarqube
 EOF
   )
+}
+
+# --- ASG CLUSTER DISCOVERY ROLE (REQUIRED FOR PASSIVE SERVICE) ---
+resource "aws_iam_role" "sonar_discovery_role" {
+  name = "sonar-discovery-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action    = "sts:AssumeRole"
+        Effect    = "Allow"
+        Principal = { Service = "ec2.amazonaws.com" }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "sonar_discovery_policy" {
+  name = "sonar-discovery-policy"
+  role = aws_iam_role.sonar_discovery_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = [ "ec2:DescribeInstances" ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "sonar_discovery_profile" {
+  name = "sonar-discovery-profile"
+  role = aws_iam_role.sonar_discovery_role.name
 }
 
 # --- AUTO SCALING GROUPS ---
