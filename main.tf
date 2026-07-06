@@ -104,9 +104,19 @@ resource "aws_lb_listener" "http" {
   port              = "80"
   protocol          = "HTTP"
   
+  # FIX: Distribute default traffic to both target groups so Node 2 handles requests if Node 1 drops
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.sonar_tg_az1.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.sonar_tg_az1.arn
+        weight = 50
+      }
+      target_group {
+        arn    = aws_lb_target_group.sonar_tg_az2.arn
+        weight = 50
+      }
+    }
   }
 }
 
@@ -154,17 +164,17 @@ resource "aws_launch_template" "sonar_lt_active" {
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  # Dynamically adds 4GB Swap and elasticsearch configurations on launch
+  # FIX: Kept script left-aligned to prevent indentation read errors on boot
   user_data = base64encode(<<-EOF
-              #!/bin/bash
-              sudo fallocate -l 4G /swapfile
-              sudo chmod 600 /swapfile
-              sudo mkswap /swapfile
-              sudo swapon /swapfile
-              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-              sudo sysctl -w vm.max_map_count=524288
-              echo 'vm.max_map_count=524288' | sudo tee -a /etc/sysctl.conf
-              EOF
+#!/bin/bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+sudo sysctl -w vm.max_map_count=524288
+echo 'vm.max_map_count=524288' | sudo tee -a /etc/sysctl.conf
+EOF
   )
 }
 
@@ -180,17 +190,17 @@ resource "aws_launch_template" "sonar_lt_passive" {
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  # Dynamically adds 4GB Swap and elasticsearch configurations on launch
+  # FIX: Kept script left-aligned to prevent indentation read errors on boot
   user_data = base64encode(<<-EOF
-              #!/bin/bash
-              sudo fallocate -l 4G /swapfile
-              sudo chmod 600 /swapfile
-              sudo mkswap /swapfile
-              sudo swapon /swapfile
-              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-              sudo sysctl -w vm.max_map_count=524288
-              echo 'vm.max_map_count=524288' | sudo tee -a /etc/sysctl.conf
-              EOF
+#!/bin/bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+sudo sysctl -w vm.max_map_count=524288
+echo 'vm.max_map_count=524288' | sudo tee -a /etc/sysctl.conf
+EOF
   )
 }
 
@@ -202,6 +212,9 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
   min_size            = 1
   target_group_arns   = [aws_lb_target_group.sonar_tg_az1.arn]
   vpc_zone_identifier = [aws_subnet.private[0].id]
+  
+  # FIX: Extended grace period to give the micro instance 10 mins to configure its swap memory
+  health_check_grace_period = 600
 
   launch_template {
     id      = aws_launch_template.sonar_lt_active.id
@@ -222,6 +235,9 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
   min_size            = 1
   target_group_arns   = [aws_lb_target_group.sonar_tg_az2.arn]
   vpc_zone_identifier = [aws_subnet.private[1].id]
+  
+  # FIX: Extended grace period to give the micro instance 10 mins to configure its swap memory
+  health_check_grace_period = 600
 
   launch_template {
     id      = aws_launch_template.sonar_lt_passive.id
