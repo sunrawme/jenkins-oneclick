@@ -18,5 +18,6 @@ variable "availability_zones" {
 }
 
 variable "instance_type" {
-  default = "t3.medium" # Change to t3.medium or large based on Mumbai availability
+  type    = string
+  default = "t3.micro" # Or "t2.micro" depending on what your free tier permits
 }
