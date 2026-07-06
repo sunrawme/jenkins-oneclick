@@ -84,13 +84,7 @@ resource "aws_lb_target_group" "sonar_tg_az1" {
     path = "/api/system/status"
     port = "9000"
   }
-
-  # FIX: Enable sticky sessions to prevent authentication token loss between routing paths
-  stickiness {
-    type            = "lb_cookie"
-    cookie_duration = 86400
-    enabled         = true
-  }
+  # Removed target-level stickiness block to fix the AWS 400 validation error
 }
 
 resource "aws_lb_target_group" "sonar_tg_az2" {
@@ -103,13 +97,7 @@ resource "aws_lb_target_group" "sonar_tg_az2" {
     path = "/api/system/status"
     port = "9000"
   }
-
-  # FIX: Enable sticky sessions to prevent authentication token loss between routing paths
-  stickiness {
-    type            = "lb_cookie"
-    cookie_duration = 86400
-    enabled         = true
-  }
+  # Removed target-level stickiness block to fix the AWS 400 validation error
 }
 
 # --- ALB LISTENERS & HOST ROUTING RULES ---
@@ -118,7 +106,6 @@ resource "aws_lb_listener" "http" {
   port              = "80"
   protocol          = "HTTP"
   
-  # FIX: Added stickiness block to enable Group Stickiness alongside Weighted Target Groups
   default_action {
     type = "forward"
     forward {
@@ -183,7 +170,6 @@ resource "aws_launch_template" "sonar_lt_active" {
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  # FIX: Automated 4GB swap space creation + low memory tuning injections
   user_data = base64encode(<<-EOF
 #!/bin/bash
 # 1. Allocate a 4GB swap file immediately
@@ -225,7 +211,6 @@ resource "aws_launch_template" "sonar_lt_passive" {
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  # FIX: Automated 4GB swap space creation + low memory tuning injections
   user_data = base64encode(<<-EOF
 #!/bin/bash
 # 1. Allocate a 4GB swap file immediately
