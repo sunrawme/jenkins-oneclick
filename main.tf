@@ -170,19 +170,14 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
 
 # --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
 resource "aws_launch_template" "sonar_lt_active" {
-  name_prefix   = "sonarqube-active-template-"
-  image_id      = "ami-0fa7042ecfdecafcc" # Custom sonar-active-server image
-  instance_type = var.sonar_instance_type
-  key_name      = "sonarkey" # Updated Key
-
-  network_interfaces {
-    associate_public_ip_address = false
-    security_groups             = [aws_security_group.ec2_sg.id]
-  }
+  name_prefix            = "sonarqube-active-template-"
+  image_id               = "ami-0dfe9b54bb8d72905" # 👈 Your real sonar-active-server ID
+  instance_type          = var.sonar_instance_type
+  key_name               = "sonarkey"
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
   user_data = base64encode(<<-EOF
 #!/bin/bash
-# 1. Start services and keep performance optimizations intact
 systemctl daemon-reload
 systemctl restart postgresql
 systemctl restart sonarqube
@@ -192,37 +187,28 @@ EOF
 
 # --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
-  name_prefix   = "sonarqube-passive-template-"
-  image_id      = "ami-057e0f5a47ebc3a4d" # Custom sonar-passive-server image
-  instance_type = var.sonar_instance_type
-  key_name      = "sonarkey" # Updated Key
+  name_prefix            = "sonarqube-passive-template-"
+  image_id               = "ami-09bbebfdd309dfc8b" # 👈 Your real sonar-passive-server ID
+  instance_type          = var.sonar_instance_type
+  key_name               = "sonarkey"
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
-  # Required to let AWS CLI scan for the active node's IP over AWS APIs
   iam_instance_profile {
     name = aws_iam_instance_profile.sonar_discovery_profile.name
   }
 
-  network_interfaces {
-    associate_public_ip_address = false
-    security_groups             = [aws_security_group.ec2_sg.id]
-  }
-
   user_data = base64encode(<<-EOF
 #!/bin/bash
-# Install AWS CLI to run network resource queries if missing
 apt-get update && apt-get install awscli -y
 
-# 1. Fetch the active server's current internal IP address dynamically from EC2 tags
 ACTIVE_IP=""
 while [ -z "$ACTIVE_IP" ]; do
   ACTIVE_IP=$(aws ec2 describe-instances --region ap-south-1 --filters "Name=tag:Name,Values=sonarqube-asg-node-01" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].PrivateIpAddress" --output text)
   sleep 5
 done
 
-# 2. Re-point the internal configuration file database connector to the discovered IP
 sed -i "s|jdbc:postgresql://.*:5432/sonarqube|jdbc:postgresql://$ACTIVE_IP:5432/sonarqube|g" /opt/sonarqube/conf/sonar.properties
 
-# 3. Boot service
 systemctl daemon-reload
 systemctl restart sonarqube
 EOF
