@@ -142,10 +142,10 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
   }
 }
 
-# --- LAUNCH TEMPLATE & AUTO SCALING GROUPS ---
-resource "aws_launch_template" "sonar_lt" {
-  name_prefix   = "sonarqube-template-"
-  image_id      = data.aws_ami.ubuntu.id
+# --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
+resource "aws_launch_template" "sonar_lt_active" {
+  name_prefix   = "sonarqube-active-template-"
+  image_id      = "ami-0fa7042ecfdecafcc" # From your sonar-active image
   instance_type = var.instance_type
   key_name      = "jenkins-ssh-key"
 
@@ -154,9 +154,25 @@ resource "aws_launch_template" "sonar_lt" {
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  user_data = base64encode("#!/bin/bash\necho 'Initializing core node OS settings...'")
+  user_data = base64encode("#!/bin/bash\necho 'Booting Active SonarQube Node...'")
 }
 
+# --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
+resource "aws_launch_template" "sonar_lt_passive" {
+  name_prefix   = "sonarqube-passive-template-"
+  image_id      = "ami-057e0f5a47ebc3a4d" # From your sonar-passive image
+  instance_type = var.instance_type
+  key_name      = "jenkins-ssh-key"
+
+  network_interfaces {
+    associate_public_ip_address = false
+    security_groups             = [aws_security_group.ec2_sg.id]
+  }
+
+  user_data = base64encode("#!/bin/bash\necho 'Booting Passive SonarQube Node...'")
+}
+
+# --- AUTO SCALING GROUPS ---
 resource "aws_autoscaling_group" "sonar_asg_az1" {
   name                = "sonarqube-asg-az1"
   desired_capacity    = 1
@@ -166,7 +182,7 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
   vpc_zone_identifier = [aws_subnet.private[0].id]
 
   launch_template {
-    id      = aws_launch_template.sonar_lt.id
+    id      = aws_launch_template.sonar_lt_active.id
     version = "$Latest"
   }
 
@@ -186,7 +202,7 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
   vpc_zone_identifier = [aws_subnet.private[1].id]
 
   launch_template {
-    id      = aws_launch_template.sonar_lt.id
+    id      = aws_launch_template.sonar_lt_passive.id
     version = "$Latest"
   }
 
