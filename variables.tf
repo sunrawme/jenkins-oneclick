@@ -19,5 +19,5 @@ variable "availability_zones" {
 
 variable "instance_type" {
   type    = string
-  default = "t3.micro" # Or "t2.micro" depending on what your free tier permits
+  default = "t3.medium" # Or "t2.micro" depending on what your free tier permits
 }
