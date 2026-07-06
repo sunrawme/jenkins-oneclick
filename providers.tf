@@ -6,14 +6,10 @@ terraform {
     }
   }
 
-  backend "s3" {
-    bucket         = "sandeep001rawatdemo"
-    key            = "sonarqube/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-  }
-}
-
-provider "aws" {
-  region = "ap-south-1"
+  # Comment this section out completely:
+  # backend "s3" {
+  #   bucket         = "sandeep001rawatdemo"
+  #   key            = "jenkins/terraform.tfstate"
+  #   region         = "us-east-1"
+  # }
 }
