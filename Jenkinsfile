@@ -1,11 +1,11 @@
 pipeline {
     agent any
 
-   environment {
-    AWS_DEFAULT_REGION    = 'ap-south-1' # <-- Fix here
-    AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
-}
+    environment {
+        AWS_DEFAULT_REGION    = 'ap-south-1'
+        AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
+        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
+    }
 
     stages {
         stage('Checkout Code') {
@@ -21,31 +21,21 @@ pipeline {
             }
         }
 
-        stage('Execute Commands via Bastion') {
+        stage('Teardown Approvals Gate') {
             steps {
                 script {
-                    def bastionIp = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
-
-                    withCredentials([sshUserPrivateKey(credentialsId: 'aws-ec2-private-key', keyFileVariable: 'BASTION_KEY')]) {
-                        sh """#!/bin/bash
-                        chmod 400 \$BASTION_KEY
-                        echo "Testing absolute SSH access to Bastion host at ${bastionIp}..."
-                        for i in {1..10}; do
-                            echo "Connection attempt \${i}/10..."
-                            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i \$BASTION_KEY ubuntu@${bastionIp} "echo 'SSH_ALIVE'" 2>&1 | grep -q "SSH_ALIVE"; then
-                                echo "Success: Bastion fully authenticated and operational!"
-                                break
-                            elif [ \${i} -eq 10 ]; then
-                                echo "FAIL: Authenticated connection could not be established. Check your Jenkins SSH credentials key alignment."
-                                exit 255
-                            fi
-                            sleep 15
-                        done
-                        """
-                    }
+                    input message: "Infrastructure is live matching your custom AMIs! Do you want to tear down?", ok: "Yes, Destroy It"
                 }
             }
         }
+
+        stage('Terraform Destroy') {
+            steps {
+                sh 'terraform destroy -auto-approve'
+            }
+        }
+    }
+}
         stage('Ansible Playbook Execution') {
             steps {
                 script {
