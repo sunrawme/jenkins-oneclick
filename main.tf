@@ -172,7 +172,7 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
 resource "aws_launch_template" "sonar_lt_active" {
   name_prefix   = "sonarqube-active-template-"
   image_id      = "ami-0fa7042ecfdecafcc" # Custom sonar-active-server image
-  instance_type = var.instance_type
+  instance_type = var.sonar_instance_type
   key_name      = "sonarkey" # Updated Key
 
   network_interfaces {
@@ -194,7 +194,7 @@ EOF
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix   = "sonarqube-passive-template-"
   image_id      = "ami-057e0f5a47ebc3a4d" # Custom sonar-passive-server image
-  instance_type = var.instance_type
+  instance_type = var.sonar_instance_type
   key_name      = "sonarkey" # Updated Key
 
   # Required to let AWS CLI scan for the active node's IP over AWS APIs
