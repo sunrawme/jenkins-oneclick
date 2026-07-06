@@ -250,3 +250,51 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
     propagate_at_launch = true
   }
 }
+
+# --- NOTIFICATIONS (SNS) ---
+resource "aws_sns_topic" "sonar_alerts" {
+  name = "sonarqube-alerts-topic"
+}
+
+resource "aws_sns_topic_subscription" "email_sub" {
+  topic_arn = aws_sns_topic.sonar_alerts.arn
+  protocol  = "email"
+  endpoint  = "your-email@company.com" # <-- CHANGE THIS to your real email address
+}
+
+# --- MONITORING ALARMS (CLOUDWATCH) ---
+resource "aws_cloudwatch_metric_alarm" "node1_unhealthy" {
+  alarm_name          = "sonarqube-node01-unhealthy"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "HealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "1"
+  alarm_description   = "Triggers if Node 1 drops out of the Load Balancer target group."
+  alarm_actions       = [aws_sns_topic.sonar_alerts.arn]
+
+  dimensions = {
+    LoadBalancer = aws_lb.sonar_alb.arn_suffix
+    TargetGroup  = aws_lb_target_group.sonar_tg_az1.arn_suffix
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "node2_unhealthy" {
+  alarm_name          = "sonarqube-node02-unhealthy"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "HealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "1"
+  alarm_description   = "Triggers if Node 2 drops out of the Load Balancer target group."
+  alarm_actions       = [aws_sns_topic.sonar_alerts.arn]
+
+  dimensions = {
+    LoadBalancer = aws_lb.sonar_alb.arn_suffix
+    TargetGroup  = aws_lb_target_group.sonar_tg_az2.arn_suffix
+  }
+}
