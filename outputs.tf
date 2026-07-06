@@ -1,9 +1,9 @@
-output "bastion_private_ip" {
-  description = "The private IP address of the bastion host"
-  value       = aws_instance.bastion.private_ip
+output "sonar_active_url" {
+  value       = "http://${aws_instance.sonar_active.public_ip}:9000"
+  description = "Primary SonarQube Dashboard URL"
 }
 
-output "bastion_public_ip" {
-  description = "The public IP address of the bastion host"
-  value       = aws_instance.bastion.public_ip
+output "sonar_passive_url" {
+  value       = "http://${aws_instance.sonar_passive.public_ip}:9000"
+  description = "Standby SonarQube Dashboard URL"
 }
