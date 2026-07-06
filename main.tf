@@ -147,24 +147,51 @@ resource "aws_launch_template" "sonar_lt_active" {
   name_prefix   = "sonarqube-active-template-"
   image_id      = "ami-0fa7042ecfdecafcc"
   instance_type = var.instance_type
-  key_name      = "sandeep-key" # <-- Updated here
+  key_name      = "sandeep-key"
 
   network_interfaces {
     associate_public_ip_address = false
     security_groups             = [aws_security_group.ec2_sg.id]
   }
+
+  # Dynamically adds 4GB Swap and elasticsearch configurations on launch
+  user_data = base64encode(<<-EOF
+              #!/bin/bash
+              sudo fallocate -l 4G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+              sudo sysctl -w vm.max_map_count=524288
+              echo 'vm.max_map_count=524288' | sudo tee -a /etc/sysctl.conf
+              EOF
+  )
 }
 
+# --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix   = "sonarqube-passive-template-"
   image_id      = "ami-057e0f5a47ebc3a4d"
   instance_type = var.instance_type
-  key_name      = "sandeep-key" # <-- Updated here
+  key_name      = "sandeep-key"
 
   network_interfaces {
     associate_public_ip_address = false
     security_groups             = [aws_security_group.ec2_sg.id]
   }
+
+  # Dynamically adds 4GB Swap and elasticsearch configurations on launch
+  user_data = base64encode(<<-EOF
+              #!/bin/bash
+              sudo fallocate -l 4G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+              sudo sysctl -w vm.max_map_count=524288
+              echo 'vm.max_map_count=524288' | sudo tee -a /etc/sysctl.conf
+              EOF
+  )
 }
 
 # --- AUTO SCALING GROUPS ---
