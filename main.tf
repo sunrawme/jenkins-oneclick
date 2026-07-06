@@ -84,6 +84,13 @@ resource "aws_lb_target_group" "sonar_tg_az1" {
     path = "/api/system/status"
     port = "9000"
   }
+
+  # FIX: Enable sticky sessions to prevent authentication token loss between routing paths
+  stickiness {
+    type            = "lb_cookie"
+    cookie_duration = 86400
+    enabled         = true
+  }
 }
 
 resource "aws_lb_target_group" "sonar_tg_az2" {
@@ -96,6 +103,13 @@ resource "aws_lb_target_group" "sonar_tg_az2" {
     path = "/api/system/status"
     port = "9000"
   }
+
+  # FIX: Enable sticky sessions to prevent authentication token loss between routing paths
+  stickiness {
+    type            = "lb_cookie"
+    cookie_duration = 86400
+    enabled         = true
+  }
 }
 
 # --- ALB LISTENERS & HOST ROUTING RULES ---
@@ -104,7 +118,6 @@ resource "aws_lb_listener" "http" {
   port              = "80"
   protocol          = "HTTP"
   
-  # FIX: Distribute default traffic to both target groups so Node 2 handles requests if Node 1 drops
   default_action {
     type = "forward"
     forward {
@@ -164,16 +177,32 @@ resource "aws_launch_template" "sonar_lt_active" {
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  # FIX: Kept script left-aligned to prevent indentation read errors on boot
+  # FIX: Automated 4GB swap space creation + low memory tuning injections
   user_data = base64encode(<<-EOF
 #!/bin/bash
-sudo fallocate -l 4G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-sudo sysctl -w vm.max_map_count=524288
-echo 'vm.max_map_count=524288' | sudo tee -a /etc/sysctl.conf
+# 1. Allocate a 4GB swap file immediately
+fallocate -l 4G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# 2. Configure system map requirements for Elasticsearch
+sysctl -w vm.max_map_count=524288
+echo 'vm.max_map_count=524288' >> /etc/sysctl.conf
+
+# 3. Inject optimized memory properties directly into config file
+cat << 'CONFIG_EOF' >> /opt/sonarqube/conf/sonar.properties
+
+# --- OPTIMIZED LOW PERFORMANCE CONFIG FOR T3.MICRO ---
+sonar.search.javaOpts=-Xms256m -Xmx256m -XX:+UseSerialGC
+sonar.web.javaOpts=-Xms128m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError
+sonar.ce.javaOpts=-Xms128m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError
+CONFIG_EOF
+
+# 4. Force restart the service to apply the micro configuration changes safely
+systemctl daemon-reload
+systemctl restart sonarqube
 EOF
   )
 }
@@ -190,16 +219,32 @@ resource "aws_launch_template" "sonar_lt_passive" {
     security_groups             = [aws_security_group.ec2_sg.id]
   }
 
-  # FIX: Kept script left-aligned to prevent indentation read errors on boot
+  # FIX: Automated 4GB swap space creation + low memory tuning injections
   user_data = base64encode(<<-EOF
 #!/bin/bash
-sudo fallocate -l 4G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-sudo sysctl -w vm.max_map_count=524288
-echo 'vm.max_map_count=524288' | sudo tee -a /etc/sysctl.conf
+# 1. Allocate a 4GB swap file immediately
+fallocate -l 4G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# 2. Configure system map requirements for Elasticsearch
+sysctl -w vm.max_map_count=524288
+echo 'vm.max_map_count=524288' >> /etc/sysctl.conf
+
+# 3. Inject optimized memory properties directly into config file
+cat << 'CONFIG_EOF' >> /opt/sonarqube/conf/sonar.properties
+
+# --- OPTIMIZED LOW PERFORMANCE CONFIG FOR T3.MICRO ---
+sonar.search.javaOpts=-Xms256m -Xmx256m -XX:+UseSerialGC
+sonar.web.javaOpts=-Xms128m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError
+sonar.ce.javaOpts=-Xms128m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError
+CONFIG_EOF
+
+# 4. Force restart the service to apply the micro configuration changes safely
+systemctl daemon-reload
+systemctl restart sonarqube
 EOF
   )
 }
@@ -213,7 +258,6 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
   target_group_arns   = [aws_lb_target_group.sonar_tg_az1.arn]
   vpc_zone_identifier = [aws_subnet.private[0].id]
   
-  # FIX: Extended grace period to give the micro instance 10 mins to configure its swap memory
   health_check_grace_period = 600
 
   launch_template {
@@ -236,7 +280,6 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
   target_group_arns   = [aws_lb_target_group.sonar_tg_az2.arn]
   vpc_zone_identifier = [aws_subnet.private[1].id]
   
-  # FIX: Extended grace period to give the micro instance 10 mins to configure its swap memory
   health_check_grace_period = 600
 
   launch_template {
@@ -259,7 +302,7 @@ resource "aws_sns_topic" "sonar_alerts" {
 resource "aws_sns_topic_subscription" "email_sub" {
   topic_arn = aws_sns_topic.sonar_alerts.arn
   protocol  = "email"
-  endpoint  = "sunraw541@gmail.com" # <-- CHANGE THIS to your real email address
+  endpoint  = "sunraw541@gmail.com" 
 }
 
 # --- MONITORING ALARMS (CLOUDWATCH) ---
