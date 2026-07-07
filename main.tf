@@ -44,9 +44,9 @@ resource "aws_security_group" "ec2_sg" {
     security_groups = [aws_security_group.alb_sg.id]
   }
   ingress {
-    description     = "Inter-node cluster DB sync"
-    from_port       = 5432
-    to_port         = 5432
+    description     = "Inter-node cluster database and application sync"
+    from_port       = 0
+    to_port         = 65535
     protocol        = "tcp"
     self            = true
   }
@@ -171,8 +171,8 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
 # --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
 resource "aws_launch_template" "sonar_lt_active" {
   name_prefix            = "sonarqube-active-template-"
-  image_id               = "ami-0dfe9b54bb8d72905" # 👈 Your real sonar-active-server ID
-  instance_type          = var.sonar_instance_type
+  image_id               = "ami-02c66bc635e6563a2" # Updated: Fresh Active AMI
+  instance_type          = var.sonar_instance_type # Fixed: Variable aligned
   key_name               = "sonarkey"
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
@@ -188,8 +188,8 @@ EOF
 # --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix            = "sonarqube-passive-template-"
-  image_id               = "ami-09bbebfdd309dfc8b" # 👈 Your real sonar-passive-server ID
-  instance_type          = var.sonar_instance_type
+  image_id               = "ami-0f592c70a4fec5862" # Updated: Fresh Passive AMI
+  instance_type          = var.sonar_instance_type # Fixed: Variable aligned
   key_name               = "sonarkey"
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
