@@ -17,7 +17,7 @@ pipeline {
         stage('Terraform Apply') {
             steps {
                 // Delete the cached backend configuration to force a clean slate
-                sh 'rm -rf .terraform'
+                
                 sh 'terraform init'
                 sh 'terraform apply -auto-approve'
             }
