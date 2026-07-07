@@ -44,13 +44,6 @@ resource "aws_security_group" "ec2_sg" {
     security_groups = [aws_security_group.alb_sg.id]
   }
   ingress {
-    description     = "Inter-node cluster database and application sync"
-    from_port       = 0
-    to_port         = 65535
-    protocol        = "tcp"
-    self            = true
-  }
-  ingress {
     description     = "SSH strictly from Bastion"
     from_port       = 22
     to_port         = 22
@@ -168,16 +161,26 @@ resource "aws_lb_listener_rule" "sonar2_rule" {
   }
 }
 
-# --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
+# --- LAUNCH TEMPLATE FOR AZ1 NODE ---
 resource "aws_launch_template" "sonar_lt_active" {
-  name_prefix            = "sonarqube-active-template-"
-  image_id               = "ami-02c66bc635e6563a2" # Updated: Fresh Active AMI
-  instance_type          = var.sonar_instance_type # Fixed: Variable aligned
+  name_prefix            = "sonarqube-az1-template-"
+  image_id               = "ami-02c66bc635e6563a2" 
+  instance_type          = var.sonar_instance_type 
   key_name               = "sonarkey"
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
   user_data = base64encode(<<-EOF
 #!/bin/bash
+# 1. Increase memory mapping limits for internal Elasticsearch engine
+sysctl -w vm.max_map_count=524288
+sysctl -w fs.file-max=131072
+echo "vm.max_map_count=524288" >> /etc/sysctl.conf
+echo "fs.file-max=131072" >> /etc/sysctl.conf
+
+# 2. Force configuration properties to target the local database
+sed -i 's|^sonar.jdbc.url=.*|sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube|g' /opt/sonarqube/conf/sonar.properties
+
+# 3. Reload daemon and restart clean local stack
 systemctl daemon-reload
 systemctl restart postgresql
 systemctl restart sonarqube
@@ -185,71 +188,31 @@ EOF
   )
 }
 
-# --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
+# --- LAUNCH TEMPLATE FOR AZ2 NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
-  name_prefix            = "sonarqube-passive-template-"
-  image_id               = "ami-0f592c70a4fec5862" # Updated: Fresh Passive AMI
-  instance_type          = var.sonar_instance_type # Fixed: Variable aligned
+  name_prefix            = "sonarqube-az2-template-"
+  image_id               = "ami-0f592c70a4fec5862" 
+  instance_type          = var.sonar_instance_type 
   key_name               = "sonarkey"
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
-  iam_instance_profile {
-    name = aws_iam_instance_profile.sonar_discovery_profile.name
-  }
-
   user_data = base64encode(<<-EOF
 #!/bin/bash
-apt-get update && apt-get install awscli -y
+# 1. Increase memory mapping limits for internal Elasticsearch engine
+sysctl -w vm.max_map_count=524288
+sysctl -w fs.file-max=131072
+echo "vm.max_map_count=524288" >> /etc/sysctl.conf
+echo "fs.file-max=131072" >> /etc/sysctl.conf
 
-ACTIVE_IP=""
-while [ -z "$ACTIVE_IP" ]; do
-  ACTIVE_IP=$(aws ec2 describe-instances --region ap-south-1 --filters "Name=tag:Name,Values=sonarqube-asg-node-01" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].PrivateIpAddress" --output text)
-  sleep 5
-done
+# 2. Force configuration properties to target the local database
+sed -i 's|^sonar.jdbc.url=.*|sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube|g' /opt/sonarqube/conf/sonar.properties
 
-sed -i "s|jdbc:postgresql://.*:5432/sonarqube|jdbc:postgresql://$ACTIVE_IP:5432/sonarqube|g" /opt/sonarqube/conf/sonar.properties
-
+# 3. Reload daemon and restart clean local stack
 systemctl daemon-reload
+systemctl restart postgresql
 systemctl restart sonarqube
 EOF
   )
-}
-
-# --- ASG CLUSTER DISCOVERY ROLE (REQUIRED FOR PASSIVE SERVICE) ---
-resource "aws_iam_role" "sonar_discovery_role" {
-  name = "sonar-discovery-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action    = "sts:AssumeRole"
-        Effect    = "Allow"
-        Principal = { Service = "ec2.amazonaws.com" }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy" "sonar_discovery_policy" {
-  name = "sonar-discovery-policy"
-  role = aws_iam_role.sonar_discovery_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = [ "ec2:DescribeInstances" ]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_instance_profile" "sonar_discovery_profile" {
-  name = "sonar-discovery-profile"
-  role = aws_iam_role.sonar_discovery_role.name
 }
 
 # --- AUTO SCALING GROUPS ---
