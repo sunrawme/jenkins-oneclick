@@ -1,16 +1,68 @@
-# --- DYNAMIC AMIs ---
+# --- DYNAMIC AMIs (Grabs standard, vanilla Ubuntu 24.04) ---
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"]
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/*ubuntu-noble-24.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
   }
   filter {
     name   = "architecture"
     values = ["x86_64"]
   }
+}
+
+# --- AWS S3 BUCKET FOR STORAGE ---
+resource "aws_s3_bucket" "sonar_backup" {
+  bucket        = "sandeep0010demo"
+  force_destroy = true 
+}
+
+# --- IAM ROLE & PROFILE FOR S3 ACCESS ---
+resource "aws_iam_role" "ec2_s3_role" {
+  name = "sonarqube-ec2-s3-access-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "s3_write_policy" {
+  name = "s3-write-permissions"
+  role = aws_iam_role.ec2_s3_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "${aws_s3_bucket.sonar_backup.arn}",
+          "${aws_s3_bucket.sonar_backup.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "sonarqube-ec2-instance-profile"
+  role = aws_iam_role.ec2_s3_role.name
 }
 
 # --- APPLICATION SECURITY GROUPS ---
@@ -43,8 +95,6 @@ resource "aws_security_group" "ec2_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
-
-  # CRITICAL FOR ACTIVE-PASSIVE: Allow PostgreSQL Replication between nodes
   ingress {
     description = "PostgreSQL Replication Sync"
     from_port   = 5432
@@ -52,7 +102,6 @@ resource "aws_security_group" "ec2_sg" {
     protocol    = "tcp"
     self        = true 
   }
-
   ingress {
     description     = "SSH strictly from Bastion"
     from_port       = 22
@@ -87,10 +136,10 @@ resource "aws_lb_target_group" "sonar_tg_az1" {
     path                = "/"
     port                = "9000"
     protocol            = "HTTP"
-    interval            = 15  # Faster health checks for quicker failover
+    interval            = 30
     timeout             = 5
     healthy_threshold   = 2
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
     matcher             = "200-499" 
   }
 }
@@ -105,15 +154,15 @@ resource "aws_lb_target_group" "sonar_tg_az2" {
     path                = "/"
     port                = "9000"
     protocol            = "HTTP"
-    interval            = 15
+    interval            = 30
     timeout             = 5
     healthy_threshold   = 2
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
     matcher             = "200-499" 
   }
 }
 
-# --- ALB LISTENER: FORWARD TO ACTIVE, FAILOVER TO PASSIVE ---
+# --- ALB LISTENER ---
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.sonar_alb.arn
   port              = "80"
@@ -122,17 +171,14 @@ resource "aws_lb_listener" "http" {
   default_action {
     type = "forward"
     forward {
-      # 100% of traffic goes to AZ1 (Active)
       target_group {
         arn    = aws_lb_target_group.sonar_tg_az1.arn
         weight = 100
       }
-      # 0% of traffic goes to AZ2 (Passive Standby)
       target_group {
         arn    = aws_lb_target_group.sonar_tg_az2.arn
         weight = 0
       }
-      
       stickiness {
         enabled  = true
         duration = 86400
@@ -144,24 +190,90 @@ resource "aws_lb_listener" "http" {
 # --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
 resource "aws_launch_template" "sonar_lt_active" {
   name_prefix            = "sonarqube-az1-template-"
-  image_id               = "ami-02c66bc635e6563a2" 
+  image_id               = data.aws_ami.ubuntu.id # Uses standard Ubuntu 24.04
   instance_type          = var.sonar_instance_type 
   key_name               = "sonarkey"
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.ec2_profile.arn
+  }
 
   user_data = base64encode(<<-EOF
 #!/bin/bash
+exec > >(tee /var/log/user-data.log|logger -t user-data -s2>/dev/console) 2>&1
+
+# 1. System Requirements & Kernel Optimizations for Elasticsearch
 sysctl -w vm.max_map_count=524288
 sysctl -w fs.file-max=131072
 echo "vm.max_map_count=524288" >> /etc/sysctl.conf
 echo "fs.file-max=131072" >> /etc/sysctl.conf
 
-# Active points directly to its local writeable database
-sed -i 's|^sonar.jdbc.url=.*|sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube|g' /opt/sonarqube/conf/sonar.properties
+# 2. Install Dependencies (Java 17, PostgreSQL 16, unzip, AWS CLI)
+apt-get update
+apt-get install -y openjdk-17-jre unzip awscli postgresql-16 postgresql-contrib-16
 
+# 3. Configure Local Database
+sudo -u postgres psql -c "CREATE USER sonar WITH PASSWORD 'sonar_password';"
+sudo -u postgres psql -c "CREATE DATABASE sonarqube OWNER sonar;"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE sonarqube TO sonar;"
+
+# 4. Download and Install SonarQube (Community Edition)
+cd /tmp
+wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.4.1.88267.zip
+unzip sonarqube-10.4.1.88267.zip
+mv sonarqube-10.4.1.88267 /opt/sonarqube
+
+# 5. Create Dedication User for SonarQube (Elasticsearch cannot run as root)
+useradd -r -s /bin/bash sonar
+chown -R sonar:sonar /opt/sonarqube
+
+# 6. Configure SonarQube Database Connectivity properties
+cat << 'INNER_EOF' > /opt/sonarqube/conf/sonar.properties
+sonar.jdbc.username=sonar
+sonar.jdbc.password=sonar_password
+sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube
+sonar.web.port=9000
+INNER_EOF
+
+# 7. Setup Systemd Service File
+cat << 'INNER_EOF' > /etc/systemd/system/sonarqube.service
+[Unit]
+Description=SonarQube service
+After=syslog.target network.target postgresql.service
+
+[Service]
+Type=forking
+ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+User=sonar
+Group=sonar
+Restart=always
+LimitNOFILE=131072
+LimitNPROC=8192
+
+[Install]
+WantedBy=multi-user.target
+INNER_EOF
+
+# 8. Start Services
 systemctl daemon-reload
+systemctl enable postgresql
 systemctl restart postgresql
-systemctl restart sonarqube
+systemctl enable sonarqube
+systemctl start sonarqube
+
+# 9. Create S3 Backup Sync Cron Job
+cat << 'INNER_EOF' > /usr/local/bin/backup_to_s3.sh
+#!/bin/bash
+BACKUP_NAME="sonar_db_$(date +%F_%R).sql"
+sudo -u postgres pg_dump sonarqube > /tmp/$BACKUP_NAME
+aws s3 cp /tmp/$BACKUP_NAME s3://sandeep0010demo/backups/$BACKUP_NAME
+rm -f /tmp/$BACKUP_NAME
+INNER_EOF
+
+chmod +x /usr/local/bin/backup_to_s3.sh
+echo "0 * * * * /usr/local/bin/backup_to_s3.sh" | crontab -
 EOF
   )
 }
@@ -169,24 +281,77 @@ EOF
 # --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix            = "sonarqube-az2-template-"
-  image_id               = "ami-0f592c70a4fec5862" 
+  image_id               = data.aws_ami.ubuntu.id # Uses standard Ubuntu 24.04
   instance_type          = var.sonar_instance_type 
   key_name               = "sonarkey"
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.ec2_profile.arn
+  }
+
   user_data = base64encode(<<-EOF
 #!/bin/bash
+exec > >(tee /var/log/user-data.log|logger -t user-data -s2>/dev/console) 2>&1
+
+# 1. System Requirements & Kernel Optimizations
 sysctl -w vm.max_map_count=524288
 sysctl -w fs.file-max=131072
 echo "vm.max_map_count=524288" >> /etc/sysctl.conf
 echo "fs.file-max=131072" >> /etc/sysctl.conf
 
-# Passive also points to its local copy, which is a read-only replication mirror
-sed -i 's|^sonar.jdbc.url=.*|sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube|g' /opt/sonarqube/conf/sonar.properties
+# 2. Install Dependencies
+apt-get update
+apt-get install -y openjdk-17-jre unzip awscli postgresql-16 postgresql-contrib-16
+
+# 3. Configure Local Database
+sudo -u postgres psql -c "CREATE USER sonar WITH PASSWORD 'sonar_password';"
+sudo -u postgres psql -c "CREATE DATABASE sonarqube OWNER sonar;"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE sonarqube TO sonar;"
+
+# 4. Download and Install SonarQube
+cd /tmp
+wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.4.1.88267.zip
+unzip sonarqube-10.4.1.88267.zip
+mv sonarqube-10.4.1.88267 /opt/sonarqube
+
+# 5. Create Permissions
+useradd -r -s /bin/bash sonar
+chown -R sonar:sonar /opt/sonarqube
+
+# 6. Configure Properties
+cat << 'INNER_EOF' > /opt/sonarqube/conf/sonar.properties
+sonar.jdbc.username=sonar
+sonar.jdbc.password=sonar_password
+sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube
+sonar.web.port=9000
+INNER_EOF
+
+# 7. Setup Systemd Service
+cat << 'INNER_EOF' > /etc/systemd/system/sonarqube.service
+[Unit]
+Description=SonarQube service
+After=syslog.target network.target postgresql.service
+
+[Service]
+Type=forking
+ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+User=sonar
+Group=sonar
+Restart=always
+LimitNOFILE=131072
+LimitNPROC=8192
+
+[Install]
+WantedBy=multi-user.target
+INNER_EOF
 
 systemctl daemon-reload
+systemctl enable postgresql
 systemctl restart postgresql
-systemctl restart sonarqube
+systemctl enable sonarqube
+systemctl start sonarqube
 EOF
   )
 }
@@ -200,17 +365,9 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
   target_group_arns   = [aws_lb_target_group.sonar_tg_az1.arn]
   vpc_zone_identifier = [aws_subnet.private[0].id]
   
-  health_check_grace_period = 600
-
   launch_template {
     id      = aws_launch_template.sonar_lt_active.id
     version = "$Latest"
-  }
-
-  tag {
-    key                 = "Name"
-    value               = "sonarqube-active-node"
-    propagate_at_launch = true
   }
 }
 
@@ -222,46 +379,8 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
   target_group_arns   = [aws_lb_target_group.sonar_tg_az2.arn]
   vpc_zone_identifier = [aws_subnet.private[1].id]
   
-  health_check_grace_period = 600
-
   launch_template {
     id      = aws_launch_template.sonar_lt_passive.id
     version = "$Latest"
-  }
-
-  tag {
-    key                 = "Name"
-    value               = "sonarqube-passive-node"
-    propagate_at_launch = true
-  }
-}
-
-# --- NOTIFICATIONS (SNS) ---
-resource "aws_sns_topic" "sonar_alerts" {
-  name = "sonarqube-alerts-topic"
-}
-
-resource "aws_sns_topic_subscription" "email_sub" {
-  topic_arn = aws_sns_topic.sonar_alerts.arn
-  protocol  = "email"
-  endpoint  = "sunraw541@gmail.com" 
-}
-
-# --- MONITORING ALARMS (CLOUDWATCH) ---
-resource "aws_cloudwatch_metric_alarm" "node1_unhealthy" {
-  alarm_name          = "sonarqube-node01-unhealthy"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "HealthyHostCount"
-  namespace           = "AWS/ApplicationELB"
-  period              = "60"
-  statistic           = "Average"
-  threshold           = "1"
-  alarm_description   = "Triggers failover alerts if Active Node drops out."
-  alarm_actions       = [aws_sns_topic.sonar_alerts.arn]
-
-  dimensions = {
-    LoadBalancer = aws_lb.sonar_alb.arn_suffix
-    TargetGroup  = aws_lb_target_group.sonar_tg_az1.arn_suffix
   }
 }
