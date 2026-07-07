@@ -43,6 +43,16 @@ resource "aws_security_group" "ec2_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
+
+  # CRITICAL FOR ACTIVE-PASSIVE: Allow PostgreSQL Replication between nodes
+  ingress {
+    description = "PostgreSQL Replication Sync"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    self        = true 
+  }
+
   ingress {
     description     = "SSH strictly from Bastion"
     from_port       = 22
@@ -67,9 +77,8 @@ resource "aws_lb" "sonar_alb" {
   subnets            = aws_subnet.public[*].id
 }
 
-# Only ONE Target Group is needed now
-resource "aws_lb_target_group" "sonar_tg_single" {
-  name     = "sonarqube-tg-single"
+resource "aws_lb_target_group" "sonar_tg_az1" {
+  name     = "sonarqube-tg-az1"
   port     = 9000
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
@@ -78,46 +87,78 @@ resource "aws_lb_target_group" "sonar_tg_single" {
     path                = "/"
     port                = "9000"
     protocol            = "HTTP"
-    interval            = 30
-    timeout             = 10
+    interval            = 15  # Faster health checks for quicker failover
+    timeout             = 5
     healthy_threshold   = 2
-    unhealthy_threshold = 5
+    unhealthy_threshold = 2
     matcher             = "200-499" 
   }
 }
 
-# --- ALB LISTENER (ALL traffic directly routes here) ---
+resource "aws_lb_target_group" "sonar_tg_az2" {
+  name     = "sonarqube-tg-az2"
+  port     = 9000
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  
+  health_check {
+    path                = "/"
+    port                = "9000"
+    protocol            = "HTTP"
+    interval            = 15
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    matcher             = "200-499" 
+  }
+}
+
+# --- ALB LISTENER: FORWARD TO ACTIVE, FAILOVER TO PASSIVE ---
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.sonar_alb.arn
   port              = "80"
   protocol          = "HTTP"
   
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.sonar_tg_single.arn
+    type = "forward"
+    forward {
+      # 100% of traffic goes to AZ1 (Active)
+      target_group {
+        arn    = aws_lb_target_group.sonar_tg_az1.arn
+        weight = 100
+      }
+      # 0% of traffic goes to AZ2 (Passive Standby)
+      target_group {
+        arn    = aws_lb_target_group.sonar_tg_az2.arn
+        weight = 0
+      }
+      
+      stickiness {
+        enabled  = true
+        duration = 86400
+      }
+    }
   }
 }
 
-# --- LAUNCH TEMPLATE FOR SINGLE STANDALONE NODE ---
-resource "aws_launch_template" "sonar_lt_single" {
-  name_prefix            = "sonarqube-single-template-"
-  image_id               = "ami-02c66bc635e6563a2" # Your stable base image
+# --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
+resource "aws_launch_template" "sonar_lt_active" {
+  name_prefix            = "sonarqube-az1-template-"
+  image_id               = "ami-02c66bc635e6563a2" 
   instance_type          = var.sonar_instance_type 
   key_name               = "sonarkey"
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
   user_data = base64encode(<<-EOF
 #!/bin/bash
-# 1. Fix memory configurations for Elasticsearch
 sysctl -w vm.max_map_count=524288
 sysctl -w fs.file-max=131072
 echo "vm.max_map_count=524288" >> /etc/sysctl.conf
 echo "fs.file-max=131072" >> /etc/sysctl.conf
 
-# 2. Re-verify application points to the local database container loop
+# Active points directly to its local writeable database
 sed -i 's|^sonar.jdbc.url=.*|sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube|g' /opt/sonarqube/conf/sonar.properties
 
-# 3. Clean up and start services
 systemctl daemon-reload
 systemctl restart postgresql
 systemctl restart sonarqube
@@ -125,25 +166,72 @@ EOF
   )
 }
 
-# --- SINGLE AUTO SCALING GROUP ---
-resource "aws_autoscaling_group" "sonar_asg_single" {
-  name                = "sonarqube-asg-single"
+# --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
+resource "aws_launch_template" "sonar_lt_passive" {
+  name_prefix            = "sonarqube-az2-template-"
+  image_id               = "ami-0f592c70a4fec5862" 
+  instance_type          = var.sonar_instance_type 
+  key_name               = "sonarkey"
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+
+  user_data = base64encode(<<-EOF
+#!/bin/bash
+sysctl -w vm.max_map_count=524288
+sysctl -w fs.file-max=131072
+echo "vm.max_map_count=524288" >> /etc/sysctl.conf
+echo "fs.file-max=131072" >> /etc/sysctl.conf
+
+# Passive also points to its local copy, which is a read-only replication mirror
+sed -i 's|^sonar.jdbc.url=.*|sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube|g' /opt/sonarqube/conf/sonar.properties
+
+systemctl daemon-reload
+systemctl restart postgresql
+systemctl restart sonarqube
+EOF
+  )
+}
+
+# --- AUTO SCALING GROUPS ---
+resource "aws_autoscaling_group" "sonar_asg_az1" {
+  name                = "sonarqube-asg-az1"
   desired_capacity    = 1
-  max_size            = 1  # Kept tight to prevent unnecessary spin-ups
+  max_size            = 1
   min_size            = 1
-  target_group_arns   = [aws_lb_target_group.sonar_tg_single.arn]
-  vpc_zone_identifier = [aws_subnet.private[0].id] # Pins it safely into your first private AZ
+  target_group_arns   = [aws_lb_target_group.sonar_tg_az1.arn]
+  vpc_zone_identifier = [aws_subnet.private[0].id]
   
   health_check_grace_period = 600
 
   launch_template {
-    id      = aws_launch_template.sonar_lt_single.id
+    id      = aws_launch_template.sonar_lt_active.id
     version = "$Latest"
   }
 
   tag {
     key                 = "Name"
-    value               = "sonarqube-standalone-server"
+    value               = "sonarqube-active-node"
+    propagate_at_launch = true
+  }
+}
+
+resource "aws_autoscaling_group" "sonar_asg_az2" {
+  name                = "sonarqube-asg-az2"
+  desired_capacity    = 1
+  max_size            = 1
+  min_size            = 1
+  target_group_arns   = [aws_lb_target_group.sonar_tg_az2.arn]
+  vpc_zone_identifier = [aws_subnet.private[1].id]
+  
+  health_check_grace_period = 600
+
+  launch_template {
+    id      = aws_launch_template.sonar_lt_passive.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "sonarqube-passive-node"
     propagate_at_launch = true
   }
 }
@@ -159,9 +247,9 @@ resource "aws_sns_topic_subscription" "email_sub" {
   endpoint  = "sunraw541@gmail.com" 
 }
 
-# --- MONITORING ALARM ---
-resource "aws_cloudwatch_metric_alarm" "node_unhealthy" {
-  alarm_name          = "sonarqube-server-unhealthy"
+# --- MONITORING ALARMS (CLOUDWATCH) ---
+resource "aws_cloudwatch_metric_alarm" "node1_unhealthy" {
+  alarm_name          = "sonarqube-node01-unhealthy"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "HealthyHostCount"
@@ -169,11 +257,11 @@ resource "aws_cloudwatch_metric_alarm" "node_unhealthy" {
   period              = "60"
   statistic           = "Average"
   threshold           = "1"
-  alarm_description   = "Triggers if the single SonarQube instance drops out of service."
+  alarm_description   = "Triggers failover alerts if Active Node drops out."
   alarm_actions       = [aws_sns_topic.sonar_alerts.arn]
 
   dimensions = {
     LoadBalancer = aws_lb.sonar_alb.arn_suffix
-    TargetGroup  = aws_lb_target_group.sonar_tg_single.arn_suffix
+    TargetGroup  = aws_lb_target_group.sonar_tg_az1.arn_suffix
   }
 }
