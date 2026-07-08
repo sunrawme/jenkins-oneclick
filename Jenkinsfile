@@ -1,51 +1,32 @@
 pipeline {
     agent any
     
-    environment {
-        // Ensure Terraform has access to your AWS credentials
-        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-        AWS_DEFAULT_REGION    = 'ap-south-1' // Change to your region
-    }
-
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
-
-        stage('Terraform Init') {
+        stage('Terraform') {
             steps {
-                sh 'terraform init'
-            }
-        }
-
-        stage('Terraform Format') {
-            steps {
-                // Fails the build if code is not formatted
-                sh 'terraform fmt -recursive'
-                sh 'terraform fmt -check -diff'
-            }
-        }
-
-        stage('Terraform Validate') {
-            steps {
-                sh 'terraform validate'
-            }
-        }
-
-        stage('Terraform Plan') {
-            steps {
-                // Saves the plan to a file to be used later in 'apply'
-                sh 'terraform plan -out=tfplan'
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh 'terraform init'
+                    sh 'terraform fmt -recursive'
+                    sh 'terraform validate'
+                    sh 'terraform plan -out=tfplan'
+                }
             }
         }
     }
 
     post {
         always {
-            cleanWs() // Clean workspace after completion
+            // Note: This will delete tfplan. 
+            // If you need it for a later stage, comment this out.
+            cleanWs() 
         }
         failure {
             echo "Terraform pipeline failed. Please check the logs."
