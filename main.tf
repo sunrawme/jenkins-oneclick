@@ -324,11 +324,17 @@ resource "null_resource" "ansible_trigger" {
       LC_ALL = "C.UTF-8"
       LANG   = "C.UTF-8"
     }
-    
     command = <<EOT
       echo "Setting correct permissions for SSH key..."
-      # This is the critical line that fixes your 'Permission denied' error
       chmod 400 /var/lib/jenkins/workspace/demo/sandeepkey.pem
+      
+      echo "Generating inventory file..."
+      # Create the group header first, then append the IPs
+      echo "[sonarqube_nodes]" > inventory.ini
+      aws ec2 describe-instances \
+        --filters "Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1,sonarqube-asg-az2" \
+        --query "Reservations[*].Instances[*].PrivateIpAddress" \
+        --output text >> inventory.ini
       
       echo "Waiting for SSH to be ready..."
       sleep 60
