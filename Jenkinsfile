@@ -1,6 +1,10 @@
 pipeline {
     agent any
     
+    parameters {
+        choice(name: 'ACTION', choices: ['plan', 'apply', 'destroy'], description: 'Choose Terraform action')
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -16,20 +20,21 @@ pipeline {
                     sh 'terraform init'
                     sh 'terraform fmt -recursive'
                     sh 'terraform validate'
-                    sh 'terraform plan -out=tfplan'
+                    
+                    script {
+                        if (params.ACTION == 'plan') {
+                            sh 'terraform plan'
+                        } else if (params.ACTION == 'apply') {
+                            sh 'terraform apply -auto-approve'
+                        } else if (params.ACTION == 'destroy') {
+                            sh 'terraform destroy -auto-approve'
+                        }
+                    }
                 }
             }
         }
     }
-
-    post {
-        always {
-            // Note: This will delete tfplan. 
-            // If you need it for a later stage, comment this out.
-            cleanWs() 
-        }
-        failure {
-            echo "Terraform pipeline failed. Please check the logs."
-        }
-    }
+    
+    // Note: Removed cleanWs() from 'always' because you might want 
+    // to inspect the terraform.tfstate after an apply.
 }
