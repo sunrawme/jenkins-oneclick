@@ -268,6 +268,7 @@ resource "null_resource" "ansible_trigger" {
     }
     
     command = <<EOT
+      set -x
       echo "Setting correct permissions for SSH key..."
       chmod 400 /var/lib/jenkins/workspace/demo/sandeepkey.pem
       
