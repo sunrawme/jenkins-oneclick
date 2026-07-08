@@ -5,11 +5,8 @@ terraform {
       version = "~> 5.0"
     }
   }
+}
 
-  # Comment this section out completely:
-  # backend "s3" {
-  #   bucket         = "sandeep001rawatdemo"
-  #   key            = "jenkins/terraform.tfstate"
-  #   region         = "us-east-1"
-  # }
+provider "aws" {
+  region = "ap-south-1" # Ensure this matches your target region
 }
