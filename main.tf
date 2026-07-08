@@ -106,12 +106,14 @@ resource "aws_security_group" "ec2_sg" {
     self        = true
   }
   ingress {
-    description     = "SSH Access"
+    description     = "SSH from Bastion"
     from_port       = 22
     to_port         = 22
     protocol        = "tcp"
-    cidr_blocks     = ["0.0.0.0/0"] # Modify this to match your pipeline/bastion limits
+    security_groups = [aws_security_group.bastion_sg.id] # Only allow SSH from Bastion!
   }
+  # ... existing code ...
+}
   egress {
     from_port   = 0
     to_port     = 0
