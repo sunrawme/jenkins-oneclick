@@ -13,44 +13,6 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# --- AWS S3 BUCKET FOR STORAGE ---
-resource "aws_s3_bucket" "sonar_backup" {
-  bucket        = "sandeep0010demo2"
-  force_destroy = false # Never force wipe during cleanups
-
-  # Prevent Terraform from destroying this resource
- 
-}
-
-
-
-resource "aws_iam_role_policy" "s3_write_policy" {
-  name = "s3-write-permissions"
-  role = aws_iam_role.ec2_s3_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:PutObject",
-          "s3:GetObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          "${aws_s3_bucket.sonar_backup.arn}",
-          "${aws_s3_bucket.sonar_backup.arn}/*"
-        ]
-      }
-    ]
-  })
-}
-
-resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "sonarqube-ec2-instance-profile"
-  role = aws_iam_role.ec2_s3_role.name
-}
 
 # --- APPLICATION SECURITY GROUPS ---
 resource "aws_security_group" "alb_sg" {
