@@ -11,7 +11,8 @@ pipeline {
                 checkout scm
             }
         }
-        stage('Terraform') {
+
+        stage('Terraform Execution') {
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
@@ -27,6 +28,8 @@ pipeline {
                         } else if (params.ACTION == 'apply') {
                             sh 'terraform apply -auto-approve'
                         } else if (params.ACTION == 'destroy') {
+                            // Added manual gate to prevent accidental destruction
+                            input message: "CAUTION: Are you sure you want to destroy all infrastructure?", ok: "Yes, Proceed"
                             sh 'terraform destroy -auto-approve'
                         }
                     }
@@ -35,36 +38,11 @@ pipeline {
         }
     }
     
-    // Note: Removed cleanWs() from 'always' because you might want 
-    // to inspect the terraform.tfstate after an apply.
-}
-
-        stage('Terraform Apply') {
-            steps {
-                // Delete the cached backend configuration to force a clean slate
-
-                sh 'terraform init'
-                sh 'terraform apply -auto-approve'
-            }
-        }
-
-        stage('Teardown Approvals Gate') {
-            steps {
-                script {
-                    input message: "Infrastructure is live! Do you want to tear down?", ok: "Yes, Destroy It"
-                }
-            }
-        }
-
-        stage('Terraform Destroy') {
-            steps {
-                sh 'terraform destroy -auto-approve'
-            }
+    post {
+        always {
+            // Optional: keep workspace for state file inspection 
+            // but log the final status
+            echo "Pipeline finished with status: ${currentBuild.result}"
         }
     }
-}
-~
-
-    // Note: Removed cleanWs() from 'always' because you might want 
-    // to inspect the terraform.tfstate after an apply.
 }
