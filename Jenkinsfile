@@ -3,9 +3,12 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION    = 'ap-south-1'
+        // These IDs must match the names in your Jenkins Credentials UI
         AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
         AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
     }
+    
+
 
     stages {
         stage('Checkout Code') {
@@ -16,9 +19,8 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                // Delete the cached backend configuration to force a clean slate
-
-                sh 'terraform init'
+                // -reconfigure solves the backend conflict error
+                sh 'terraform init -reconfigure'
                 sh 'terraform apply -auto-approve'
             }
         }
