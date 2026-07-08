@@ -5,18 +5,6 @@ pipeline {
         choice(name: 'ACTION', choices: ['plan', 'apply', 'destroy'], description: 'Choose Terraform action')
     }
 
-     stages {
-        stage('Checkout Code') {
-            steps {
-                checkout scm
-            }
-        }pipeline {
-    agent any
-    
-    parameters {
-        choice(name: 'ACTION', choices: ['plan', 'apply', 'destroy'], description: 'Choose Terraform action')
-    }
-
     stages {
         stage('Checkout') {
             steps {
