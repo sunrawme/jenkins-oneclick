@@ -98,6 +98,7 @@ resource "aws_security_group" "ec2_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
+
   ingress {
     description = "PostgreSQL Replication Sync"
     from_port   = 5432
@@ -105,15 +106,15 @@ resource "aws_security_group" "ec2_sg" {
     protocol    = "tcp"
     self        = true
   }
+
   ingress {
     description     = "SSH from Bastion"
     from_port       = 22
     to_port         = 22
     protocol        = "tcp"
-    security_groups = [aws_security_group.bastion_sg.id] # Only allow SSH from Bastion!
+    security_groups = [aws_security_group.bastion_sg.id]
   }
-  # ... existing code ...
-}
+
   egress {
     from_port   = 0
     to_port     = 0
