@@ -25,6 +25,7 @@ pipeline {
             steps {
                 // Fails the build if code is not formatted
                 sh 'terraform fmt -recursive'
+                sh 'terraform fmt -check -diff'
             }
         }
 
