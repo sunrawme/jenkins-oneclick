@@ -193,19 +193,18 @@ resource "aws_lb_listener" "http" {
   }
 }
 
+# --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
 resource "aws_launch_template" "sonar_lt_active" {
   name_prefix   = "sonarqube-az1-template-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.sonar_instance_type
-  # key_name    = "your-new-key-name" # Ensure this matches a REAL key in AWS
-
+  key_name      = "YOUR_NEW_KEY_NAME_HERE" # REPLACE WITH YOUR REAL KEY NAME
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
   iam_instance_profile {
     arn = aws_iam_instance_profile.ec2_profile.arn
   }
 
-  # THIS MUST BE INSIDE THE RESOURCE BLOCK
   block_device_mappings {
     device_name = "/dev/sda1"
     ebs {
@@ -215,7 +214,6 @@ resource "aws_launch_template" "sonar_lt_active" {
     }
   }
 
-  # THIS MUST BE INSIDE THE RESOURCE BLOCK
   user_data = base64encode(<<-EOF
 #!/bin/bash
 sysctl -w vm.max_map_count=524288
@@ -224,20 +222,20 @@ echo "vm.max_map_count=524288" >> /etc/sysctl.conf
 echo "fs.file-max=131072" >> /etc/sysctl.conf
 EOF
   )
-} # <--- THIS CLOSES THE RESOURCE
+}
 
 # --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix   = "sonarqube-az2-template-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.sonar_instance_type
-  # Remove this line:
-  # key_name    = "sonarkey"
+  key_name      = "YOUR_NEW_KEY_NAME_HERE" # REPLACE WITH YOUR REAL KEY NAME
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-  # ...
-}
 
-  # --- EXPAND ROOT STORAGE TO 30GB ---
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.ec2_profile.arn
+  }
+
   block_device_mappings {
     device_name = "/dev/sda1"
     ebs {
@@ -256,7 +254,6 @@ echo "fs.file-max=131072" >> /etc/sysctl.conf
 EOF
   )
 }
-
 # # --- AUTO SCALING GROUPS ---
 resource "aws_autoscaling_group" "sonar_asg_az1" {
   name                = "sonarqube-asg-az1"
