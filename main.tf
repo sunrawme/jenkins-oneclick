@@ -229,7 +229,7 @@ resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix   = "sonarqube-az2-template-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.sonar_instance_type
-  key_name      = "YOUR_NEW_KEY_NAME_HERE" # REPLACE WITH YOUR REAL KEY NAME
+  key_name      = "sandeepkey" # REPLACE WITH YOUR REAL KEY NAME
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
   iam_instance_profile {
