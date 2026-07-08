@@ -269,6 +269,10 @@ resource "null_resource" "ansible_trigger" {
     
     command = <<EOT
       set -x
+      export LANG=C.UTF-8
+      export LC_ALL=C.UTF-8
+      locale
+    
       echo "Setting correct permissions for SSH key..."
       chmod 400 /var/lib/jenkins/workspace/demo/sandeepkey.pem
       
