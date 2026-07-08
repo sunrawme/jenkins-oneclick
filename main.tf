@@ -324,38 +324,34 @@ resource "null_resource" "ansible_trigger" {
       LC_ALL = "C.UTF-8"
       LANG   = "C.UTF-8"
     }
+    
     command = <<EOT
       echo "Setting correct permissions for SSH key..."
       chmod 400 /var/lib/jenkins/workspace/demo/sandeepkey.pem
       
       echo "Generating inventory file..."
-      # Create the group header first, then append the IPs
       echo "[sonarqube_nodes]" > inventory.ini
+      
+      # Use --output text and then format the output specifically to handle spaces/tabs
       aws ec2 describe-instances \
-        --filters "Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1,sonarqube-asg-az2" \
+        --filters "Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1,sonarqube-asg-az2" "Name=instance-state-name,Values=running" \
         --query "Reservations[*].Instances[*].PrivateIpAddress" \
-        --output text >> inventory.ini
+        --output text | tr '\t' '\n' >> inventory.ini
       
       echo "Waiting for SSH to be ready..."
-      sleep 60
+      # Use a loop to check if instances are actually reachable
+      count=0
+      while [ $count -lt 10 ]; do
+        if ansible -i inventory.ini sonarqube_nodes -m ping --ssh-common-args="-F ./ssh.cfg -o BatchMode=yes" > /dev/null 2>&1; then
+          echo "Instances are reachable!"
+          break
+        fi
+        echo "Waiting for SSH... (attempt $((count+1))/10)"
+        sleep 20
+        count=$((count+1))
+      done
       
-      cat <<EOF > "./ssh.cfg"
-Host bastion
-    HostName ${aws_instance.bastion.public_ip}
-    User ubuntu
-    IdentityFile /var/lib/jenkins/workspace/demo/sandeepkey.pem
-    IdentitiesOnly yes
-    StrictHostKeyChecking no
-
-Host 10.0.*
-    ProxyJump bastion
-    User ubuntu
-    IdentityFile /var/lib/jenkins/workspace/demo/sandeepkey.pem
-    IdentitiesOnly yes
-    StrictHostKeyChecking no
-    ServerAliveInterval 30
-EOF
-      
+      echo "Running Ansible Playbook..."
       ansible-playbook -i "./inventory.ini" playbook.yml \
         --ssh-common-args="-F ./ssh.cfg -o BatchMode=yes" -vvv
     EOT
