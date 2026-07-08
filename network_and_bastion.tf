@@ -1,3 +1,18 @@
+# --- DYNAMIC AMIs (Ensures Bastion always uses standard Ubuntu 24.04 LTS) ---
+data "aws_ami" "ubuntu_bastion" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+}
+
 # --- VPC & NETWORKING ---
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
@@ -64,7 +79,7 @@ resource "aws_eip" "nat_eip" {
 
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat_eip.id
-  subnet_id      = aws_subnet.public[0].id
+  subnet_id     = aws_subnet.public[0].id
 
   tags = { Name = "sonar-nat-gateway" }
 }
@@ -113,10 +128,10 @@ resource "aws_security_group" "bastion_sg" {
 
 # --- BASTION EC2 INSTANCE ---
 resource "aws_instance" "bastion" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "t3.micro"
-  key_name      = "sonarkey"
-  subnet_id     = aws_subnet.public[0].id
+  ami                    = data.aws_ami.ubuntu_bastion.id
+  instance_type          = "m7i-flex.large"
+  key_name               = "sonarkey"
+  subnet_id              = aws_subnet.public[0].id
   vpc_security_group_ids = [aws_security_group.bastion_sg.id]
 
   tags = { Name = "bastion-host" }

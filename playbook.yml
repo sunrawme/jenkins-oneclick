@@ -1,7 +1,9 @@
 ---
 - name: Configure High Availability SonarQube Nodes
   hosts: sonarqube_nodes
-  become: yes
+  become: true
+  gather_facts: true
+
   tasks:
     - name: 1. Set Kernel Optimization Parameters
       sysctl:
@@ -9,74 +11,79 @@
         value: "{{ item.value }}"
         state: present
         reload: yes
-      with_items:
+      loop:
         - { name: 'vm.max_map_count', value: '524288' }
         - { name: 'fs.file-max', value: '131072' }
 
-    - name: 2. Install Docker Prerequisites
+    - name: 2. Install Docker & System Prerequisites
       apt:
-        name: [apt-transport-https, ca-certificates, curl, gnupg, lsb-release, python3-pip]
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - unzip
+          - docker.io
+          - python3-pip
+          - python3-docker
         state: present
         update_cache: yes
 
-    - name: 3. Setup Docker Keyring and Repo
+    - name: 3. Check if AWS CLI is installed
+      command: aws --version
+      register: aws_cli_check
+      failed_when: false
+      changed_when: false
+
+    - name: 4. Download and Install AWS CLI v2 Bundle if missing
       shell: |
-        mkdir -p /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip -o awscliv2.zip
+        sudo ./aws/install --update
+      when: aws_cli_check.rc != 0
 
-    - name: 4. Install Docker Engine
-      apt:
-        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+    - name: 5. Start and Enable Docker Service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: 6. Create Docker network for SonarQube
+      docker_network:
+        name: sonar_network
         state: present
-        update_cache: yes
 
-    - name: 5. Create Stack Directory
-      file:
-        path: /opt/sonar-ha-stack
-        state: directory
-        mode: '0755'
+    - name: 7. Spin up PostgreSQL Database Container
+      docker_container:
+        name: sonar_db
+        image: postgres:15-alpine
+        networks:
+          - name: sonar_network
+        state: started
+        restart_policy: always
+        env:
+          POSTGRES_USER: sonar
+          POSTGRES_PASSWORD: sonar_secret_password
+          POSTGRES_DB: sonarqube
 
-    - name: 6. Template out Integrated Docker Compose Configuration
-      copy:
-        dest: /opt/sonar-ha-stack/docker-compose.yml
-        content: |
-          version: '3.8'
-          services:
-            sonarqube-db:
-              image: postgres:14
-              container_name: sonarqube_db
-              environment:
-                - POSTGRES_USER=sonar
-                - POSTGRES_PASSWORD=SonarSecure2026!
-                - POSTGRES_DB=sonar
-              volumes:
-                - postgres_data:/var/lib/postgresql/data
-              ports:
-                - "5432:5432"
+    - name: 8. Pause to allow Database engine startup initialization
+      pause:
+        seconds: 15
 
-            sonarqube:
-              image: sonarqube:10.4.1-community
-              container_name: sonarqube_node
-              ports:
-                - "9000:9000"
-              depends_on:
-                - sonarqube-db
-              environment:
-                - SONAR_JDBC_USERNAME=sonar
-                - SONAR_JDBC_PASSWORD=SonarSecure2026!
-                - SONAR_JDBC_URL=jdbc:postgresql://sonarqube-db:5432/sonar
-              volumes:
-                - sonar_data:/opt/sonarqube/data
-                - sonar_extensions:/opt/sonarqube/extensions
-                - sonar_logs:/opt/sonarqube/logs
-          volumes:
-            postgres_data:
-            sonar_data:
-            sonar_extensions:
-            sonar_logs:
-
-    - name: 7. Run Containerized Stack
-      command:
-        cmd: docker compose up -d
-        chdir: /opt/sonar-ha-stack
+    - name: 9. Spin up SonarQube Application Container
+      docker_container:
+        name: sonarqube_app
+        image: sonarqube:community
+        networks:
+          - name: sonar_network
+        state: started
+        restart_policy: always
+        published_ports:
+          - "9000:9000"
+        env:
+          SONAR_JDBC_USERNAME: sonar
+          SONAR_JDBC_PASSWORD: sonar_secret_password
+          SONAR_JDBC_URL: "jdbc:postgresql://sonar_db:5432/sonarqube"
+        ulimits:
+          - "nofile:65536:65536"
