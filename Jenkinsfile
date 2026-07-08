@@ -24,7 +24,7 @@ pipeline {
         stage('Terraform Format') {
             steps {
                 // Fails the build if code is not formatted
-                sh 'terraform fmt -check'
+                sh 'terraform fmt -recursive'
             }
         }
 
