@@ -320,13 +320,16 @@ resource "null_resource" "ansible_trigger" {
   triggers = { always_run = "${timestamp()}" }
 
   provisioner "local-exec" {
-    # ADD THIS ENVIRONMENT BLOCK
     environment = {
       LC_ALL = "C.UTF-8"
       LANG   = "C.UTF-8"
     }
     
     command = <<EOT
+      echo "Setting correct permissions for SSH key..."
+      # This is the critical line that fixes your 'Permission denied' error
+      chmod 400 /var/lib/jenkins/workspace/demo/sandeepkey.pem
+      
       echo "Waiting for SSH to be ready..."
       sleep 60
       
