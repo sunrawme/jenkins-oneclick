@@ -1,40 +1,53 @@
 pipeline {
     agent any
-
+    
     environment {
-        AWS_DEFAULT_REGION    = 'ap-south-1'
-        AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
-        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
+        // Ensure Terraform has access to your AWS credentials
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+        AWS_DEFAULT_REGION    = 'ap-south-1' // Change to your region
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Terraform Apply') {
+        stage('Terraform Init') {
             steps {
-                // Delete the cached backend configuration to force a clean slate
-                
                 sh 'terraform init'
-                sh 'terraform apply -auto-approve'
             }
         }
 
-        stage('Teardown Approvals Gate') {
+        stage('Terraform Format') {
             steps {
-                script {
-                    input message: "Infrastructure is live! Do you want to tear down?", ok: "Yes, Destroy It"
-                }
+                // Fails the build if code is not formatted
+                sh 'terraform fmt -check'
             }
         }
 
-        stage('Terraform Destroy') {
+        stage('Terraform Validate') {
             steps {
-                sh 'terraform destroy -auto-approve'
+                sh 'terraform validate'
             }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                // Saves the plan to a file to be used later in 'apply'
+                sh 'terraform plan -out=tfplan'
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs() // Clean workspace after completion
+        }
+        failure {
+            echo "Terraform pipeline failed. Please check the logs."
         }
     }
 }
