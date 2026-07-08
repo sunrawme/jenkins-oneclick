@@ -312,38 +312,48 @@ data "aws_instances" "asg_instances_az2" {
 }
 
 resource "null_resource" "ansible_trigger" {
-  triggers = {
-    az1_instance = join(",", data.aws_instances.asg_instances_az1.private_ips)
-    az2_instance = join(",", data.aws_instances.asg_instances_az2.private_ips)
-    bastion_ip   = aws_instance.bastion.public_ip 
-  }
+  # Keep the dependency list clean and complete
+  depends_on = [
+    aws_autoscaling_group.sonar_asg_az1, 
+    aws_autoscaling_group.sonar_asg_az2,
+    # Ensure this matches the exact resource name of your bastion
+    aws_instance.bastion 
+  ]
+  
+  triggers = { always_run = "${timestamp()}" }
 
   provisioner "local-exec" {
-    command = <<-EOT
-      echo "Step 1: Dynamically writing local inventory.ini..."
-      echo "[sonarqube_nodes]" > inventory.ini
-      echo "${data.aws_instances.asg_instances_az1.private_ips[0]}" >> inventory.ini
-      echo "${data.aws_instances.asg_instances_az2.private_ips[0]}" >> inventory.ini
+    environment = {
+      LC_ALL = "C.UTF-8"
+      LANG   = "C.UTF-8"
+    }
+    command = <<EOT
+      echo "Waiting for instances to initialize..."
+      sleep 60
       
-      echo "Step 2: Waiting 80 seconds for private instances to fully boot..."
-      sleep 80
+      chmod 400 "${path.module}/sandeepkey.pem"
       
-      echo "Step 3: Running Ansible via Bastion Proxy..."
-      ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
-        -i inventory.ini \
-        playbook.yml \
-        --private-key=sonarkey.pem \
-        -u ubuntu \
-        -e "ansible_python_interpreter=/usr/bin/python3" \
-        --ssh-common-args='-o ProxyCommand="ssh -W %h:%p -q -o StrictHostKeyChecking=no -i sonarkey.pem ubuntu@${aws_instance.bastion.public_ip}" -o ControlMaster=auto -o ControlPersist=60s'
+      cat <<EOF > "./ssh.cfg"
+Host bastion
+    HostName ${aws_instance.bastion.public_ip}
+    User ubuntu
+    IdentityFile ${path.module}/sandeepkey.pem
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+
+Host 10.0.*
+    ProxyJump bastion
+    User ubuntu
+    IdentityFile ${path.module}/sandeepkey.pem
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+    ServerAliveInterval 30
+EOF
+      
+      ansible-playbook -i "./inventory.ini" playbook.yml \
+        --ssh-common-args="-F ./ssh.cfg -o BatchMode=yes" -vvv
     EOT
   }
-
-  depends_on = [
-    aws_autoscaling_group.sonar_asg_az1,
-    aws_autoscaling_group.sonar_asg_az2,
-    aws_instance.bastion
-  ]
 }
 # --- SNS TOPIC FOR ALERTS ---
 resource "aws_sns_topic" "sonar_alerts" {
