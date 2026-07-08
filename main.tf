@@ -311,39 +311,37 @@ data "aws_instances" "asg_instances_az2" {
 }
 
 resource "null_resource" "ansible_trigger" {
-  # Keep the dependency list clean and complete
   depends_on = [
     aws_autoscaling_group.sonar_asg_az1, 
     aws_autoscaling_group.sonar_asg_az2,
-    # Ensure this matches the exact resource name of your bastion
     aws_instance.bastion 
   ]
   
   triggers = { always_run = "${timestamp()}" }
 
   provisioner "local-exec" {
+    # ADD THIS ENVIRONMENT BLOCK
     environment = {
       LC_ALL = "C.UTF-8"
       LANG   = "C.UTF-8"
     }
+    
     command = <<EOT
-      echo "Waiting for instances to initialize..."
+      echo "Waiting for SSH to be ready..."
       sleep 60
-      
-      chmod 400 "${path.module}/sandeepkey.pem"
       
       cat <<EOF > "./ssh.cfg"
 Host bastion
     HostName ${aws_instance.bastion.public_ip}
     User ubuntu
-    IdentityFile ${path.module}/sandeepkey.pem
+    IdentityFile /var/lib/jenkins/workspace/demo/sandeepkey.pem
     IdentitiesOnly yes
     StrictHostKeyChecking no
 
 Host 10.0.*
     ProxyJump bastion
     User ubuntu
-    IdentityFile ${path.module}/sandeepkey.pem
+    IdentityFile /var/lib/jenkins/workspace/demo/sandeepkey.pem
     IdentitiesOnly yes
     StrictHostKeyChecking no
     ServerAliveInterval 30
