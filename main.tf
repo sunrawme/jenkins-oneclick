@@ -15,7 +15,7 @@ data "aws_ami" "ubuntu" {
 
 # --- AWS S3 BUCKET FOR STORAGE ---
 resource "aws_s3_bucket" "sonar_backup" {
-  bucket        = "sandeep0010demo"
+  bucket        = "sandeep0010demo2"
   force_destroy = false # Never force wipe during cleanups
 
   # Prevent Terraform from destroying this resource
