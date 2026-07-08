@@ -101,7 +101,7 @@ resource "aws_instance" "bastion" {
   ami                         = data.aws_ami.ubuntu_bastion.id
   instance_type               = "t3.micro"
   # Remove this line:
-  # key_name                  = "sonarkey" 
+  key_name                    = "sandeepkey" 
   subnet_id                   = aws_subnet.public[0].id
   vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
   associate_public_ip_address = true
