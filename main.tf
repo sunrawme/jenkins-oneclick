@@ -147,9 +147,7 @@ resource "aws_launch_template" "sonar_lt_active" {
   key_name      = "sandeepkey" # REPLACE WITH YOUR REAL KEY NAME
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
-  iam_instance_profile {
-    arn = aws_iam_instance_profile.ec2_profile.arn
-  }
+  
 
   block_device_mappings {
     device_name = "/dev/sda1"
@@ -178,9 +176,7 @@ resource "aws_launch_template" "sonar_lt_passive" {
   key_name      = "sandeepkey" # REPLACE WITH YOUR REAL KEY NAME
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
-  iam_instance_profile {
-    arn = aws_iam_instance_profile.ec2_profile.arn
-  }
+  
 
   block_device_mappings {
     device_name = "/dev/sda1"
