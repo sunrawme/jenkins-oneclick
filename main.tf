@@ -228,15 +228,14 @@ EOF
 
 # --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
-  name_prefix            = "sonarqube-az2-template-"
-  image_id               = data.aws_ami.ubuntu.id
-  instance_type          = var.sonar_instance_type
-  key_name               = "sonarkey"
+  name_prefix   = "sonarqube-az2-template-"
+  image_id      = data.aws_ami.ubuntu.id
+  instance_type = var.sonar_instance_type
+  # Remove this line:
+  # key_name    = "sonarkey"
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-
-  iam_instance_profile {
-    arn = aws_iam_instance_profile.ec2_profile.arn
-  }
+  # ...
+}
 
   # --- EXPAND ROOT STORAGE TO 30GB ---
   block_device_mappings {
