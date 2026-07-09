@@ -24,18 +24,19 @@ pipeline {
             }
         }
         stage('Ansible Provisioning') {
-            steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
-                    sh '''
-                        # Install the Amazon AWS collection if it's missing
-                        ansible-galaxy collection install amazon.aws
-                        
-                        # Run the playbook using the dynamic inventory file
-                        ansible-playbook -i aws_ec2.yml playbook.yml \
-                        --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no -o IdentityFile=${SSH_KEY_PATH}" -vvv
-                    '''
-                }
-            }
+    steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
+            sh '''
+                # Ensure the AWS collection is installed
+                ansible-galaxy collection install amazon.aws
+                
+                # Run the playbook using the dynamic inventory file (aws_ec2.yml)
+                # The groups 'sonar_Active_Sonarqube' and 'sonar_Passive_Sonarqube' 
+                # will be created automatically based on your tags.
+                
+                ansible-playbook -i aws_ec2.yml playbook.yml \
+                --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no -o IdentityFile=${SSH_KEY_PATH}" -vvv
+            '''
         }
     }
 }
