@@ -1,7 +1,7 @@
-# --- DYNAMIC AMIs (Grabs standard, vanilla Ubuntu 24.04) ---
+# --- DYNAMIC AMIs ---
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical
+  owners      = ["099720109477"] 
 
   filter {
     name   = "name"
@@ -12,7 +12,6 @@ data "aws_ami" "ubuntu" {
     values = ["x86_64"]
   }
 }
-
 
 # --- APPLICATION SECURITY GROUPS ---
 resource "aws_security_group" "alb_sg" {
@@ -114,7 +113,6 @@ resource "aws_lb_target_group" "sonar_tg_az2" {
   }
 }
 
-# --- ALB LISTENER ---
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.sonar_alb.arn
   port              = "80"
@@ -139,15 +137,13 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# --- LAUNCH TEMPLATE FOR ACTIVE NODE ---
+# --- LAUNCH TEMPLATES ---
 resource "aws_launch_template" "sonar_lt_active" {
   name_prefix   = "sonarqube-az1-template-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.sonar_instance_type
-  key_name      = "sandeepkey" # REPLACE WITH YOUR REAL KEY NAME
+  key_name      = var.ssh_key_name
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-
-  
 
   block_device_mappings {
     device_name = "/dev/sda1"
@@ -168,15 +164,12 @@ EOF
   )
 }
 
-# --- LAUNCH TEMPLATE FOR PASSIVE NODE ---
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix   = "sonarqube-az2-template-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.sonar_instance_type
-  key_name      = "sandeepkey" # REPLACE WITH YOUR REAL KEY NAME
+  key_name      = var.ssh_key_name
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-
-  
 
   block_device_mappings {
     device_name = "/dev/sda1"
@@ -196,7 +189,8 @@ echo "fs.file-max=131072" >> /etc/sysctl.conf
 EOF
   )
 }
-# # --- AUTO SCALING GROUPS ---
+
+# --- AUTO SCALING GROUPS ---
 resource "aws_autoscaling_group" "sonar_asg_az1" {
   name                = "sonarqube-asg-az1"
   desired_capacity    = 1
@@ -237,7 +231,7 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
   }
 }
 
-# --- SNS TOPIC FOR ALERTS ---
+# --- MONITORING ---
 resource "aws_sns_topic" "sonar_alerts" {
   name = "sonarqube-alerts"
 }
@@ -248,7 +242,6 @@ resource "aws_sns_topic_subscription" "email_alert" {
   endpoint  = "sunraw541@gmail.com"
 }
 
-# --- CLOUDWATCH ALARM (High CPU Usage) ---
 resource "aws_cloudwatch_metric_alarm" "sonar_cpu_alarm" {
   alarm_name          = "sonarqube-high-cpu"
   comparison_operator = "GreaterThanThreshold"
@@ -258,9 +251,9 @@ resource "aws_cloudwatch_metric_alarm" "sonar_cpu_alarm" {
   period              = "120"
   statistic           = "Average"
   threshold           = "80"
-  alarm_description   = "This metric monitors ec2 cpu utilization"
   alarm_actions       = [aws_sns_topic.sonar_alerts.arn]
   
+  # Monitoring both nodes
   dimensions = {
     AutoScalingGroupName = aws_autoscaling_group.sonar_asg_az1.name
   }
