@@ -18,8 +18,24 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                sh 'terraform init -reconfigure'
-                sh 'terraform apply -auto-approve'
+                sh '''
+                    terraform init -reconfigure
+                    terraform apply -auto-approve
+                '''
+            }
+        }
+
+        stage('Start SSH Agent') {
+            steps {
+                sh '''
+                    chmod 400 sandeepkey.pem
+
+                    eval "$(ssh-agent -s)"
+
+                    ssh-add sandeepkey.pem
+
+                    ssh-add -l
+                '''
             }
         }
 
