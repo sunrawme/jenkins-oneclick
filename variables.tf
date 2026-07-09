@@ -21,3 +21,9 @@ variable "sonar_instance_type" {
   type    = string
   default = "m7i-flex.large"
 }
+
+variable "ssh_key_name" {
+  description = "The name of the AWS EC2 Key Pair"
+  type        = string
+  default     = "sandeepkey"
+}
