@@ -137,10 +137,10 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# --- LAUNCH TEMPLATES ---
+# --- LAUNCH TEMPLATES (Now truly Immutable) ---
 resource "aws_launch_template" "sonar_lt_active" {
   name_prefix   = "sonarqube-active-template-"
-  image_id      = "ami-0353300b35db06a0a" # Your active AMI
+  image_id      = "ami-0353300b35db06a0a" 
   instance_type = "c7i-flex.large"
   key_name      = var.ssh_key_name
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
@@ -153,20 +153,11 @@ resource "aws_launch_template" "sonar_lt_active" {
       delete_on_termination = true
     }
   }
-
-  user_data = base64encode(<<-EOF
-#!/bin/bash
-sysctl -w vm.max_map_count=524288
-sysctl -w fs.file-max=131072
-echo "vm.max_map_count=524288" >> /etc/sysctl.conf
-echo "fs.file-max=131072" >> /etc/sysctl.conf
-EOF
-  )
 }
 
 resource "aws_launch_template" "sonar_lt_passive" {
   name_prefix   = "sonarqube-passive-template-"
-  image_id      = "ami-042dbeea63c4e26ef" # Your passive AMI
+  image_id      = "ami-042dbeea63c4e26ef"
   instance_type = "c7i-flex.large"
   key_name      = var.ssh_key_name
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
@@ -179,17 +170,8 @@ resource "aws_launch_template" "sonar_lt_passive" {
       delete_on_termination = true
     }
   }
-
-  user_data = base64encode(<<-EOF
-#!/bin/bash
-sysctl -w vm.max_map_count=524288
-sysctl -w fs.file-max=131072
-echo "vm.max_map_count=524288" >> /etc/sysctl.conf
-echo "fs.file-max=131072" >> /etc/sysctl.conf
-EOF
-  )
 }
-
+# ... (Keep all your existing ASG and ALB resources below)
 # --- AUTO SCALING GROUPS ---
 resource "aws_autoscaling_group" "sonar_asg_az1" {
   name                = "sonarqube-asg-az1"
