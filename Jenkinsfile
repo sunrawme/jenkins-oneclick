@@ -27,14 +27,7 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
                     sh '''
-                        # 1. Install required Python libraries for AWS
-                        sudo apt-get update && sudo apt-get install -y python3-pip
-                        pip3 install boto3 botocore --break-system-packages
-                        
-                        # 2. Install the Amazon AWS collection
-                        ansible-galaxy collection install amazon.aws
-                        
-                        # 3. Run the playbook using the dynamic inventory file
+                        # Run the playbook using the dynamic inventory file
                         ansible-playbook -i aws_ec2.yml playbook.yml \
                         --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no -o IdentityFile=${SSH_KEY_PATH}" -vvv
                     '''
