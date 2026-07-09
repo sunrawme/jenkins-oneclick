@@ -30,18 +30,15 @@ pipeline {
         }
         stage('Ansible Provisioning') {
             steps {
-                // This block automatically loads the key into the SSH agent for this stage
-                sshagent(['sonarkey']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
                     sh '''
-                        # Ensure permissions for the key in Jenkins workspace
-                        chmod 400 sandeepkey.pem
+                        echo "Listing files to verify directory structure:"
+                        ls -la
                         
-                        # Run Ansible
-                        ansible-playbook -i inventory.ini setup_sonarqube.yml \
-                        --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no" -vvv
+                        # Now run the playbook
+                        ansible-playbook -i inventory.ini playbook.yml \
+                        --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no -o IdentityFile=${SSH_KEY_PATH}" -vvv
                     '''
                 }
             }
         }
-    }
-}
