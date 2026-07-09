@@ -13,12 +13,6 @@ pipeline {
             steps {
                 cleanWs()
                 checkout scm
-
-                sh '''
-                    echo "Current workspace:"
-                    pwd
-                    ls -la
-                '''
             }
         }
 
@@ -34,42 +28,33 @@ pipeline {
         stage('Setup SSH Environment') {
             steps {
                 script {
-
+                    // Extract dynamic IP from Terraform
                     def BASTION_IP = sh(
                         script: 'terraform output -raw bastion_public_ip',
                         returnStdout: true
                     ).trim()
 
+                    // Execute configuration in a single shell block to maintain environment
                     sh """
                         echo "Using Bastion IP: ${BASTION_IP}"
-
                         mkdir -p \$HOME/.ssh
 
+                        # Validate files exist
                         if [ ! -f "\$WORKSPACE/ssh.cfg.template" ]; then
-                            echo "ERROR: ssh.cfg.template not found"
-                            echo "Files available:"
-                            ls -la \$WORKSPACE
+                            echo "ERROR: ssh.cfg.template not found at \$WORKSPACE"
                             exit 1
                         fi
 
-                        if [ ! -f "\$WORKSPACE/sandeepkey.pem" ]; then
-                            echo "ERROR: sandeepkey.pem not found"
-                            echo "Files available:"
-                            ls -la \$WORKSPACE
-                            exit 1
-                        fi
-
+                        # Generate config and set permissions
                         sed "s/BASTION_IP_PLACEHOLDER/${BASTION_IP}/g" \
                             \$WORKSPACE/ssh.cfg.template > \$HOME/.ssh/config
-
+                        
                         chmod 600 \$HOME/.ssh/config
-
                         chmod 400 \$WORKSPACE/sandeepkey.pem
 
+                        # Initialize agent and add key
                         eval \$(ssh-agent -s)
-
                         ssh-add \$WORKSPACE/sandeepkey.pem
-
                         ssh-add -l
                     """
                 }
@@ -79,14 +64,12 @@ pipeline {
         stage('Terraform Destroy') {
             steps {
                 script {
+                    // Human safety gate
                     input(
                         message: 'Are you sure you want to destroy the infrastructure?',
                         ok: 'Yes, Destroy'
                     )
-
-                    sh '''
-                        terraform destroy -auto-approve
-                    '''
+                    sh 'terraform destroy -auto-approve'
                 }
             }
         }
