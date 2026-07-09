@@ -139,9 +139,9 @@ resource "aws_lb_listener" "http" {
 
 # --- LAUNCH TEMPLATES ---
 resource "aws_launch_template" "sonar_lt_active" {
-  name_prefix   = "sonarqube-az1-template-"
-  image_id      = data.aws_ami.ubuntu.id
-  instance_type = var.sonar_instance_type
+  name_prefix   = "sonarqube-active-template-"
+  image_id      = "ami-0353300b35db06a0a" # Your active AMI
+  instance_type = "c7i-flex.large"
   key_name      = var.ssh_key_name
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
@@ -165,9 +165,9 @@ EOF
 }
 
 resource "aws_launch_template" "sonar_lt_passive" {
-  name_prefix   = "sonarqube-az2-template-"
-  image_id      = data.aws_ami.ubuntu.id
-  instance_type = var.sonar_instance_type
+  name_prefix   = "sonarqube-passive-template-"
+  image_id      = "ami-042dbeea63c4e26ef" # Your passive AMI
+  instance_type = "c7i-flex.large"
   key_name      = var.ssh_key_name
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
