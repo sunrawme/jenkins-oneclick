@@ -36,24 +36,15 @@ pipeline {
                     sh """
                         mkdir -p ~/.ssh
 
-                        sed 's/BASTION_IP_PLACEHOLDER/${BASTION_IP}/g' \
-                            ssh.cfg.template > ~/.ssh/config
+                        sed "s/BASTION_IP_PLACEHOLDER/${BASTION_IP}/g" "\$WORKSPACE/ssh.cfg.template" > ~/.ssh/config
 
                         chmod 600 ~/.ssh/config
-                        chmod 400 sandeepkey.pem
+                        chmod 400 "\$WORKSPACE/sandeepkey.pem"
 
-                        # Start SSH agent
                         eval \$(ssh-agent -s)
+                        ssh-add "\$WORKSPACE/sandeepkey.pem"
 
-                        # Add private key
-                        ssh-add sandeepkey.pem
-
-                        # Verify key is loaded
                         ssh-add -l
-
-                        # Example commands that use SSH
-                        # ssh -o StrictHostKeyChecking=no bastion "hostname"
-                        # ansible-playbook -i inventory playbook.yml
                     """
                 }
             }
