@@ -24,26 +24,16 @@ pipeline {
             }
         }
         stage('Ansible Provisioning') {
-            steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
-                    sh '''
-                        echo "Generating inventory file..."
-                        # Fetch the private IPs from Terraform outputs
-                        ACTIVE_IP=$(terraform output -raw sonar_active_private_ip)
-                        PASSIVE_IP=$(terraform output -raw sonar_passive_private_ip)
-                        
-                        # Create the inventory file
-                        echo "[sonarqube_nodes]" > inventory.ini
-                        echo "$ACTIVE_IP" >> inventory.ini
-                        echo "$PASSIVE_IP" >> inventory.ini
-                        
-                        echo "Inventory generated:"
-                        cat inventory.ini
-                        
-                        # Now run the playbook
-                        ansible-playbook -i inventory.ini playbook.yml \
-                        --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no -o IdentityFile=${SSH_KEY_PATH}" -vvv
-                    '''
-                }
-            }
+    steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
+            sh '''
+                # Install the Amazon AWS collection if it's missing
+                ansible-galaxy collection install amazon.aws
+                
+                # Run the playbook using the dynamic inventory file
+                ansible-playbook -i aws_ec2.yml playbook.yml \
+                --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no -o IdentityFile=${SSH_KEY_PATH}" -vvv
+            '''
         }
+    }
+}
