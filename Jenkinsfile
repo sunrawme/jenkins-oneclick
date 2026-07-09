@@ -17,10 +17,7 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                sh '''
-                    terraform init -reconfigure
-                    terraform apply -auto-approve
-                '''
+                sh 'terraform init -reconfigure && terraform apply -auto-approve'
             }
         }
 
@@ -28,32 +25,28 @@ pipeline {
             steps {
                 script {
                     def BASTION_IP = sh(script: 'terraform output -raw bastion_public_ip', returnStdout: true).trim()
+                    
+                    // 1. Create the config content dynamically (No external file needed!)
+                    def sshConfig = """
+Host bastion
+  HostName ${BASTION_IP}
+  User ubuntu
+  IdentityFile ${WORKSPACE}/sandeepkey.pem
 
+Host 10.0.*
+  ProxyJump bastion
+  User ubuntu
+  IdentityFile ${WORKSPACE}/sandeepkey.pem
+"""
+                    // 2. Safely write the file and set permissions
+                    writeFile file: "${env.HOME}/.ssh/config", text: sshConfig
                     sh """
-                        echo "Using Bastion IP: ${BASTION_IP}"
-                        mkdir -p \$HOME/.ssh
-
-                        # Locate the template file
-                        TEMPLATE_FILE=""
-                        if [ -f "\$WORKSPACE/ssh.cfg.template" ]; then TEMPLATE_FILE="\$WORKSPACE/ssh.cfg.template"
-                        elif [ -f "\$WORKSPACE/templates/ssh.cfg.template" ]; then TEMPLATE_FILE="\$WORKSPACE/templates/ssh.cfg.template"
-                        elif [ -f "\$WORKSPACE/ansible/ssh.cfg.template" ]; then TEMPLATE_FILE="\$WORKSPACE/ansible/ssh.cfg.template"
-                        fi
-
-                        if [ -z "\$TEMPLATE_FILE" ]; then
-                            echo "ERROR: ssh.cfg.template not found in root, templates/, or ansible/ folders."
-                            exit 1
-                        fi
-
-                        # Generate config and set permissions
-                        sed "s/BASTION_IP_PLACEHOLDER/${BASTION_IP}/g" \$TEMPLATE_FILE > \$HOME/.ssh/config
+                        chmod 600 ${env.HOME}/.ssh/config
+                        chmod 400 ${WORKSPACE}/sandeepkey.pem
                         
-                        chmod 600 \$HOME/.ssh/config
-                        chmod 400 \$WORKSPACE/sandeepkey.pem
-
-                        # Initialize agent and add key
+                        # Initialize agent
                         eval \$(ssh-agent -s)
-                        ssh-add \$WORKSPACE/sandeepkey.pem
+                        ssh-add ${WORKSPACE}/sandeepkey.pem
                         ssh-add -l
                     """
                 }
@@ -63,10 +56,7 @@ pipeline {
         stage('Terraform Destroy') {
             steps {
                 script {
-                    input(
-                        message: 'Are you sure you want to destroy the infrastructure?',
-                        ok: 'Yes, Destroy'
-                    )
+                    input(message: 'Are you sure you want to destroy the infrastructure?', ok: 'Yes, Destroy')
                     sh 'terraform destroy -auto-approve'
                 }
             }
