@@ -27,8 +27,18 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
                     sh '''
-                        echo "Listing files to verify directory structure:"
-                        ls -la
+                        echo "Generating inventory file..."
+                        # Fetch the private IPs from Terraform outputs
+                        ACTIVE_IP=$(terraform output -raw sonar_active_private_ip)
+                        PASSIVE_IP=$(terraform output -raw sonar_passive_private_ip)
+                        
+                        # Create the inventory file
+                        echo "[sonarqube_nodes]" > inventory.ini
+                        echo "$ACTIVE_IP" >> inventory.ini
+                        echo "$PASSIVE_IP" >> inventory.ini
+                        
+                        echo "Inventory generated:"
+                        cat inventory.ini
                         
                         # Now run the playbook
                         ansible-playbook -i inventory.ini playbook.yml \
@@ -37,5 +47,3 @@ pipeline {
                 }
             }
         }
-    }
-}
