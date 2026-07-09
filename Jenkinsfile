@@ -40,7 +40,7 @@ pipeline {
                         mkdir -p \$HOME/.ssh
 
                         # Validate files exist
-                        if [ ! -f "\$WORKSPACE/ssh.cfg.template" ]; then
+                        if [ ! -f "\$WORKSPACE/ssh.cfg" ]; then
                             echo "ERROR: ssh.cfg.template not found at \$WORKSPACE"
                             exit 1
                         fi
