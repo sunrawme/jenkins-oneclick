@@ -175,9 +175,9 @@ resource "aws_launch_template" "sonar_lt_passive" {
 # --- AUTO SCALING GROUPS ---
 resource "aws_autoscaling_group" "sonar_asg_az1" {
   name                = "sonarqube-asg-az1"
-  desired_capacity    = 2
-  max_size            = 4
-  min_size            = 2
+  desired_capacity    = 1
+  max_size            = 1
+  min_size            = 1
   target_group_arns   = [aws_lb_target_group.sonar_tg_az1.arn]
   vpc_zone_identifier = [aws_subnet.private[0].id]
 
