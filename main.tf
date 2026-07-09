@@ -252,58 +252,7 @@ data "aws_instances" "asg_instances_az2" {
   depends_on = [aws_autoscaling_group.sonar_asg_az2]
 }
 
-resource "null_resource" "ansible_trigger" {
-  depends_on = [
-    aws_autoscaling_group.sonar_asg_az1, 
-    aws_autoscaling_group.sonar_asg_az2,
-    aws_instance.bastion 
-  ]
-  
-  triggers = { always_run = "${timestamp()}" }
 
-  provisioner "local-exec" {
-    environment = {
-      LC_ALL = "C.UTF-8"
-      LANG   = "C.UTF-8"
-    }
-    
-    command = <<EOT
-      set -x
-      export LANG=C.UTF-8
-      export LC_ALL=C.UTF-8
-      locale
-    
-      echo "Setting correct permissions for SSH key..."
-      chmod 400 /var/lib/jenkins/workspace/demo/sandeepkey.pem
-      
-      echo "Generating inventory file..."
-      echo "[sonarqube_nodes]" > inventory.ini
-      
-      # Use --output text and then format the output specifically to handle spaces/tabs
-      aws ec2 describe-instances \
-        --filters "Name=tag:aws:autoscaling:groupName,Values=sonarqube-asg-az1,sonarqube-asg-az2" "Name=instance-state-name,Values=running" \
-        --query "Reservations[*].Instances[*].PrivateIpAddress" \
-        --output text | tr '\t' '\n' >> inventory.ini
-      
-      echo "Waiting for SSH to be ready..."
-      # Use a loop to check if instances are actually reachable
-      count=0
-      while [ $count -lt 10 ]; do
-        if ansible -i inventory.ini sonarqube_nodes -m ping --ssh-common-args="-F ./ssh.cfg -o BatchMode=yes" > /dev/null 2>&1; then
-          echo "Instances are reachable!"
-          break
-        fi
-        echo "Waiting for SSH... (attempt $((count+1))/10)"
-        sleep 20
-        count=$((count+1))
-      done
-      
-      echo "Running Ansible Playbook..."
-      ansible-playbook -i "./inventory.ini" playbook.yml \
-        --ssh-common-args="-F ./ssh.cfg -o BatchMode=yes" -vvv
-    EOT
-  }
-}
 # --- SNS TOPIC FOR ALERTS ---
 resource "aws_sns_topic" "sonar_alerts" {
   name = "sonarqube-alerts"
