@@ -237,22 +237,6 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
   }
 }
 
-# --- AUTOMATED ANSIBLE CONFIGURATION ---
-data "aws_instances" "asg_instances_az1" {
-  instance_tags = {
-    "aws:autoscaling:groupName" = aws_autoscaling_group.sonar_asg_az1.name
-  }
-  depends_on = [aws_autoscaling_group.sonar_asg_az1]
-}
-
-data "aws_instances" "asg_instances_az2" {
-  instance_tags = {
-    "aws:autoscaling:groupName" = aws_autoscaling_group.sonar_asg_az2.name
-  }
-  depends_on = [aws_autoscaling_group.sonar_asg_az2]
-}
-
-
 # --- SNS TOPIC FOR ALERTS ---
 resource "aws_sns_topic" "sonar_alerts" {
   name = "sonarqube-alerts"
