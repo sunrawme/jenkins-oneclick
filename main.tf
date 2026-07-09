@@ -187,7 +187,7 @@ resource "aws_autoscaling_group" "sonar_asg_az1" {
   }
 
   tag {
-    key                 = "Role"
+    key                 = "name"
     value               = "Active-Sonarqube"
     propagate_at_launch = true
   }
@@ -207,7 +207,7 @@ resource "aws_autoscaling_group" "sonar_asg_az2" {
   }
 
   tag {
-    key                 = "Role"
+    key                 = "Name"
     value               = "Passive-SonarQube"
     propagate_at_launch = true
   }
