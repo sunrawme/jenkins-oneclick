@@ -24,16 +24,18 @@ pipeline {
             }
         }
         stage('Ansible Provisioning') {
-    steps {
-        withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
-            sh '''
-                # Install the Amazon AWS collection if it's missing
-                ansible-galaxy collection install amazon.aws
-                
-                # Run the playbook using the dynamic inventory file
-                ansible-playbook -i aws_ec2.yml playbook.yml \
-                --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no -o IdentityFile=${SSH_KEY_PATH}" -vvv
-            '''
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'sonarkey', keyFileVariable: 'SSH_KEY_PATH')]) {
+                    sh '''
+                        # Install the Amazon AWS collection if it's missing
+                        ansible-galaxy collection install amazon.aws
+                        
+                        # Run the playbook using the dynamic inventory file
+                        ansible-playbook -i aws_ec2.yml playbook.yml \
+                        --ssh-common-args="-F ssh.cfg -o StrictHostKeyChecking=no -o IdentityFile=${SSH_KEY_PATH}" -vvv
+                    '''
+                }
+            }
         }
     }
 }
