@@ -16,6 +16,16 @@ pipeline {
             steps {
                 sh 'terraform init -reconfigure'
                 sh 'terraform apply -auto-approve'
+                
+                // --- ADD THIS BLOCK ---
+                script {
+                    // Capture the IP from Terraform
+                    def BASTION_IP = sh(script: "terraform output -raw bastion_public_ip", returnStdout: true).trim()
+                    
+                    // Replace the placeholder in your ssh.cfg file
+                    // Ensure your ssh.cfg file has "BASTION_IP_HERE" as the HostName
+                    sh "sed -i 's/BASTION_IP_HERE/${BASTION_IP}/g' ssh.cfg"
+                }
             }
         }
         stage('Ansible Provisioning') {
