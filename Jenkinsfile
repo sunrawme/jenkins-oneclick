@@ -1,65 +1,26 @@
-pipeline {
-    agent any
-
-    environment {
-        AWS_DEFAULT_REGION    = 'ap-south-1'
-        AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
-        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
-    }
-
-    stages {
-        stage('Checkout') {
+stage('Terraform Quality Gates') {
             steps {
-                cleanWs()
-                checkout scm
+                script {
+                    // 1. Format: Ensures code style matches Terraform standards
+                    sh 'terraform fmt -check'
+                    
+                    // 2. Validate: Checks syntax and internal consistency
+                    sh 'terraform init -backend=false' // Initialize without AWS access
+                    sh 'terraform validate'
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                // 3. Plan: Preview the changes to be made
+                sh 'terraform plan -out=tfplan'
             }
         }
 
         stage('Terraform Apply') {
             steps {
-                sh 'terraform init -reconfigure && terraform apply -auto-approve'
+                // Apply the saved plan
+                sh 'terraform apply -auto-approve tfplan'
             }
         }
-
-        stage('Setup SSH Environment') {
-            steps {
-                script {
-                    def BASTION_IP = sh(script: 'terraform output -raw bastion_public_ip', returnStdout: true).trim()
-                    
-                    // 1. Create the config content dynamically (No external file needed!)
-                    def sshConfig = """
-Host bastion
-  HostName ${BASTION_IP}
-  User ubuntu
-  IdentityFile ${WORKSPACE}/sandeepkey.pem
-
-Host 10.0.*
-  ProxyJump bastion
-  User ubuntu
-  IdentityFile ${WORKSPACE}/sandeepkey.pem
-"""
-                    // 2. Safely write the file and set permissions
-                    writeFile file: "${env.HOME}/.ssh/config", text: sshConfig
-                    sh """
-                        chmod 600 ${env.HOME}/.ssh/config
-                        chmod 400 ${WORKSPACE}/sandeepkey.pem
-                        
-                        # Initialize agent
-                        eval \$(ssh-agent -s)
-                        ssh-add ${WORKSPACE}/sandeepkey.pem
-                        ssh-add -l
-                    """
-                }
-            }
-        }
-
-        stage('Terraform Destroy') {
-            steps {
-                script {
-                    input(message: 'Are you sure you want to destroy the infrastructure?', ok: 'Yes, Destroy')
-                    sh 'terraform destroy -auto-approve'
-                }
-            }
-        }
-    }
-}
