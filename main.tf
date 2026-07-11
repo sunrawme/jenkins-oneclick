@@ -171,7 +171,6 @@ resource "aws_launch_template" "sonar_lt_passive" {
     }
   }
 }
-# ... (Keep all your existing ASG and ALB resources below)
 # --- AUTO SCALING GROUPS ---
 resource "aws_autoscaling_group" "sonar_asg_az1" {
   name                = "sonarqube-asg-az1"
